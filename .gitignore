@@ -1,0 +1,11 @@
+bin/
+obj/
+artifacts/
+dist/
+*.user
+.vs/
+TestResults/
+# runtime data created when running from the repo
+Data/*
+!Data/DevVault/
+Data/DevVault/.obsidian/workspace*.json
