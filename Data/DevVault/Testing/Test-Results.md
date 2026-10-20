@@ -6,18 +6,26 @@ date: 2026-10-20
 
 Umgebung: Windows 11 Home 10.0.26200, 1 Monitor 1600×900 physisch (Skalierung ≈ 110 %), .NET SDK 10.0.402.
 
-## Automatisiert (tatsächlich ausgeführt)
+## Automatisiert (tatsächlich ausgeführt, Stand 0.2.0)
 | Projekt | Ergebnis |
 |---|---|
-| CaptureDoc.Core.Tests | **85/85 bestanden** |
+| CaptureDoc.Core.Tests | **86/86 bestanden** |
 | CaptureDoc.Rendering.Tests | **13/13 bestanden** |
+| CaptureDoc.Media.Tests (mit echtem FFmpeg 9.0.2) | **13/13 bestanden** – inkl. echter Bildschirmaufnahme mit Pause |
+
+## Phase 6 – Video/GIF (manuell am portablen Build)
+- Aufnahme Bereich → Countdown → Rahmen + Leiste → Pause/Weiter → Stopp → Editor ✅ (364×352 bzw. 330×220 px, 30 fps)
+- Rahmen- und Leistenfenster: `affinity=0x11` (aus Aufnahme ausgeschlossen) und im exportierten GIF nachweislich nicht enthalten ✅
+- Trimmen 10,1–20,1 s → GIF „Optimized“: 364×352, 10,1 s, 824 KB, Limit geprüft ✅
+- MP4 High Quality: 330×220, 55,5 s, 80,7 KB ✅
+- HTML-Export mit Bild-Popup im Browser: Öffnen, Einpassen/1:1, ←/→, Esc ✅
 
 ## Akzeptanztests (manuell am portablen Build)
 | # | Test | Ergebnis |
 |---|---|---|
 | 1 | Screenshot + 3 Annotationsebenen + Speichern | ✅ Pfeil, Rechteck, 2 Schritte, Text; `.capturedoc` 99 KB |
 | 2 | Schließen, öffnen, alle Ebenen weiterbearbeiten | ✅ Text, Position, Farbe (Mehrfachauswahl), Undo/Redo |
-| 3 | GIF ≤ 5 MB | ❌ **nicht möglich** – GIF noch nicht implementiert |
+| 3 | GIF ≤ 5 MB | ✅ (0.2.0) automatisiert mit FFmpeg: Testclip 1280×720, 10 s → **800×450, 15 fps, 128 Farben, 4,19 MB**, Größe und Dauer von der Datei nachgemessen |
 | 4 | Bild max. 800 px Breite | ✅ automatisiert (1600 → 800×450); manuell JPEG max. 300 px + harte Grenze 8 KB → 300×192 px, **8 102 Bytes**, unabhängig mit System.Drawing nachgemessen |
 | 5 | Anleitung in Vault exportieren, Links prüfen | ✅ Testvault, 2 Dateien, Linkprüfung ok |
 | 6 | Re-Export nach manueller Änderung | ✅ Original mit manueller Ergänzung unverändert, `Drucker konfigurieren (2).md` geschrieben |

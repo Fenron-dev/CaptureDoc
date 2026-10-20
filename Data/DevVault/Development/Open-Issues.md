@@ -5,7 +5,11 @@ tags: [offen, risiken]
 
 | # | Thema | Art | Notiz |
 |---|---|---|---|
-| 1 | Video/GIF fehlt | Feature (Phase 6) | Akzeptanztest 3 (GIF ≤ 5 MB) daher **nicht** erfüllt |
+| 1 | Zeitgesteuerte Annotationen im Video, Zoom/Pan | Feature (Phase 7) | Modell vorbereitet; Video-Basis seit 0.2.0 vorhanden |
+| 1a | Videos nicht im `.capturedoc`-Projekt | Feature (Phase 7) | Aufnahmen liegen als MKV in `Data/Media/Aufnahmen` |
+| 1b | Systemton, Mausklick-Hervorhebung | Feature | Mikrofon funktioniert (DirectShow); Systemton braucht WASAPI-Loopback |
+| 1c | Stream-Copy-Schnitt ohne Neukodierung | Feature | derzeit wird beim Export immer neu kodiert |
+| 1d | FFmpeg nicht im Paket | Entscheidung | bewusst (Lizenz/Größe), Hinweis in App und README |
 | 2 | macOS/Linux-Aufnahme | Feature (Phase 8/9) | Interfaces vorhanden; Aufnahme meldet „nicht implementiert“. Nicht getestet (keine Umgebung) |
 | 3 | Fensteraufnahme mit Überdeckung | Einschränkung | GDI nimmt sichtbaren Inhalt auf; WGC geplant |
 | 4 | Bereich über mehrere Monitore | Einschränkung | Auswahl derzeit je Monitor; Mehrmonitor nicht getestet (nur 1 Monitor vorhanden) |

@@ -15,6 +15,9 @@ public sealed class AppServices : IDisposable
     public IScreenCaptureService Capture { get; }
     public IClipboardImageService? Clipboard { get; }
     public IGlobalHotkeyService? Hotkeys { get; }
+    /// <summary>External ffmpeg for video/GIF (null = not found).</summary>
+    public CaptureDoc.Media.FfmpegTools? Ffmpeg { get; private set; }
+    public void RefreshFfmpeg() => Ffmpeg = CaptureDoc.Media.FfmpegTools.Locate(Env.AppRoot);
     public List<string> StartupProblems { get; } = new();
     public Dictionary<string, bool> HotkeyStatus { get; } = new();
 
@@ -43,6 +46,8 @@ public sealed class AppServices : IDisposable
             StartupProblems.Add("Bildschirmaufnahme ist auf diesem Betriebssystem noch nicht implementiert. Editor, Projekte und Export funktionieren.");
         }
 
+        RefreshFfmpeg();
+        Log.Info(Ffmpeg is null ? "ffmpeg not found" : $"ffmpeg: {Ffmpeg.Source}");
         var removed = env.CleanupTemp(TimeSpan.FromDays(1));
         if (removed > 0) Log.Info($"Removed {removed} stale temp entries");
     }

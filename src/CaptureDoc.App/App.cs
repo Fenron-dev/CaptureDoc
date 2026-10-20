@@ -22,6 +22,7 @@ public sealed class App : Application
 
     public AppServices Services { get; private set; } = null!;
     public CaptureController Capture { get; private set; } = null!;
+    public Video.RecordingController Recording { get; private set; } = null!;
     public bool IsExiting { get; private set; }
     public bool HasTray { get; private set; }
     private QuickCaptureWindow? _quick;
@@ -74,6 +75,7 @@ public sealed class App : Application
         Log.Info($"Start {ProjectFile.AppVersion} root={env.AppRoot} data={env.DataRoot} runtime={(OperatingSystem.IsWindows() ? CaptureDoc.Platform.Windows.NativeRuntimeBootstrap.RuntimeDirectory : null) ?? "default"}");
         Recovery.Dir = env.RecoveryDir;
         Capture = new CaptureController(Services);
+        Recording = new Video.RecordingController(Services);
         ApplyTheme();
         SetupTray();
 
@@ -114,7 +116,9 @@ public sealed class App : Application
             {
                 "window" => CaptureMode.ActiveWindow, "screen" => CaptureMode.FullScreen, "last-region" => CaptureMode.LastRegion, _ => CaptureMode.Region,
             };
-            var ok = hk.Register(h.Action, h.Gesture, () => Dispatcher.UIThread.Post(async () => await Capture.CaptureAsync(mode)));
+            var ok = h.Action == "video"
+                ? hk.Register(h.Action, h.Gesture, () => Dispatcher.UIThread.Post(async () => await Recording.StartAsync()))
+                : hk.Register(h.Action, h.Gesture, () => Dispatcher.UIThread.Post(async () => await Capture.CaptureAsync(mode)));
             Services.HotkeyStatus[h.Action] = ok;
             if (!ok) Log.Warn($"Hotkey {h.Gesture} for {h.Action} could not be registered");
         }
@@ -138,6 +142,7 @@ public sealed class App : Application
             Item("Alle Bildschirme", () => Capture.CaptureAsync(CaptureMode.FullScreen));
             Item("Letzter Bereich", () => Capture.CaptureAsync(CaptureMode.LastRegion));
             Item("Bereich in 5 s", () => Capture.CaptureAsync(CaptureMode.Region, 5));
+            Item("● Video aufnehmen", () => Recording.StartAsync());
             menu.Items.Add(new NativeMenuItemSeparator());
             Item("Quick Capture anzeigen", () => { ShowQuick(); return Task.CompletedTask; });
             Item("Documentation Studio", () => { ShowStudio(); return Task.CompletedTask; });
@@ -194,7 +199,7 @@ public sealed class App : Application
     public async Task OpenFileAsync(Window owner)
     {
         var path = await Dialogs.OpenFileAsync(owner, "Öffnen", Services.Env.ProjectsDir,
-            ("Projekte und Bilder", new[] { "*" + ProjectFile.Extension, "*.png", "*.jpg", "*.jpeg", "*.webp" }));
+            ("Projekte, Bilder und Videos", new[] { "*" + ProjectFile.Extension, "*.png", "*.jpg", "*.jpeg", "*.webp", "*.mp4", "*.mkv", "*.webm", "*.mov", "*.gif" }));
         if (path is not null) await OpenPathAsync(path, owner);
     }
 
@@ -202,6 +207,12 @@ public sealed class App : Application
     {
         try
         {
+            if (VideoExtensions.Contains(Path.GetExtension(path).ToLowerInvariant()))
+            {
+                if (Services.Ffmpeg is null) { await Video.RecordingController.ShowMissingFfmpegAsync(owner); return; }
+                new Video.VideoEditorWindow(Services, path).Show();
+                return;
+            }
             if (path.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
             {
                 var manifestPages = ProjectFile.Load(path, verifyAssets: false).Project;
@@ -226,6 +237,8 @@ public sealed class App : Application
             await Dialogs.InfoAsync(owner, "Öffnen fehlgeschlagen", ex.Message);
         }
     }
+
+    private static readonly HashSet<string> VideoExtensions = new() { ".mp4", ".mkv", ".webm", ".mov", ".gif", ".avi" };
 
     private async Task OfferRecoveryAsync()
     {

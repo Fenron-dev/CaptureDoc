@@ -44,10 +44,28 @@ public class MiscTests
             [g.Steps[0].Id] = new("assets/schritt 01.png", 700, "Bild"),
         });
         Assert.Contains("<!doctype html>", html);
-        Assert.Contains("&lt;script&gt;", html);
-        Assert.DoesNotContain("<script>", html);
+        Assert.Contains("&lt;script&gt;alert(1)", html);
+        Assert.DoesNotContain("<script>alert", html);                 // user text is never executable
         Assert.Contains("src=\"assets/schritt%2001.png\"", html);
         Assert.Contains("class=\"callout warning\"", html);
+    }
+
+    [Fact]
+    public void Html_images_open_in_offline_lightbox()
+    {
+        var g = MarkdownTests.SampleGuide();
+        var html = HtmlBuilder.Build(g, BuiltInTemplates.All[0], new Dictionary<Guid, MarkdownBuilder.ImageRef>
+        {
+            [g.Steps[0].Id] = new("assets/a.png", 700, "A"),
+            [g.Steps[1].Id] = new("assets/b.png", 700, "B"),
+        });
+        Assert.Contains("<a class=\"zoom\" href=\"assets/a.png\"", html);   // without JS the link opens the image
+        Assert.Contains("id=\"lb\"", html);
+        Assert.DoesNotContain("http://", html);                            // no external resources
+        Assert.DoesNotContain("https://", html);
+
+        var noImages = HtmlBuilder.Build(g, BuiltInTemplates.All[0], new Dictionary<Guid, MarkdownBuilder.ImageRef>());
+        Assert.DoesNotContain("id=\"lb\"", noImages);
     }
 
     [Fact]

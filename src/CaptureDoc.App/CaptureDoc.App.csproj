@@ -27,6 +27,7 @@
   <ItemGroup>
     <ProjectReference Include="..\CaptureDoc.Core\CaptureDoc.Core.csproj" />
     <ProjectReference Include="..\CaptureDoc.Rendering\CaptureDoc.Rendering.csproj" />
+    <ProjectReference Include="..\CaptureDoc.Media\CaptureDoc.Media.csproj" />
     <ProjectReference Include="..\CaptureDoc.Platform.Windows\CaptureDoc.Platform.Windows.csproj" />
   </ItemGroup>
 </Project>

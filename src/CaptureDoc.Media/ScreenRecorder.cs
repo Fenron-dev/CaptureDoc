@@ -1,0 +1,180 @@
+using System.Diagnostics;
+using System.Text;
+using CaptureDoc.Core.Model;
+
+namespace CaptureDoc.Media;
+
+public sealed class RecordingOptions
+{
+    /// <summary>Area in virtual-screen physical pixels.</summary>
+    public required PixelRect Region { get; init; }
+    public int Fps { get; init; } = 30;
+    public bool DrawMouse { get; init; } = true;
+    /// <summary>DirectShow microphone name (Windows) or null.</summary>
+    public string? Microphone { get; init; }
+    /// <summary>Working directory for segments (portable Data/Temp/...).</summary>
+    public required string WorkDirectory { get; init; }
+}
+
+public enum RecorderState { Idle, Recording, Paused, Finished, Failed }
+
+/// <summary>
+/// Records the screen with ffmpeg in segments: Pause ends the current segment, Resume starts a new one,
+/// Stop joins all segments losslessly (concat, stream copy). Nothing is recorded while paused.
+/// Intermediate codec: H.264 4:4:4 (sharp text), MKV (survives crashes).
+/// </summary>
+public sealed class ScreenRecorder : IAsyncDisposable
+{
+    private readonly FfmpegTools _tools;
+    private readonly RecordingOptions _o;
+    private readonly List<string> _segments = new();
+    private Process? _proc;
+    private readonly Stopwatch _clock = new();
+    private readonly StringBuilder _log = new();
+
+    public RecorderState State { get; private set; } = RecorderState.Idle;
+    public TimeSpan Elapsed => _clock.Elapsed;
+    public PixelRect EffectiveRegion { get; }
+    public string? Error { get; private set; }
+    public event EventHandler? StateChanged;
+
+    public ScreenRecorder(FfmpegTools tools, RecordingOptions options)
+    {
+        _tools = tools; _o = options;
+        // H.264 needs even dimensions
+        var r = options.Region;
+        EffectiveRegion = r with { Width = Math.Max(2, r.Width & ~1), Height = Math.Max(2, r.Height & ~1) };
+        Directory.CreateDirectory(options.WorkDirectory);
+    }
+
+    internal static List<string> BuildSegmentArgs(PixelRect r, int fps, bool mouse, string? mic, string output)
+    {
+        var a = new List<string> { "-hide_banner", "-loglevel", "warning", "-y" };
+        if (OperatingSystem.IsWindows())
+        {
+            a.AddRange(new[]
+            {
+                "-thread_queue_size", "512", "-f", "gdigrab", "-framerate", fps.ToString(), "-draw_mouse", mouse ? "1" : "0",
+                "-offset_x", r.X.ToString(), "-offset_y", r.Y.ToString(), "-video_size", $"{r.Width}x{r.Height}", "-i", "desktop",
+            });
+            if (mic is not null) a.AddRange(new[] { "-thread_queue_size", "512", "-f", "dshow", "-i", "audio=" + mic });
+        }
+        else throw new PlatformNotSupportedException("Videoaufnahme ist auf diesem Betriebssystem noch nicht implementiert (geplant: ScreenCaptureKit / PipeWire).");
+
+        a.AddRange(new[] { "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-pix_fmt", "yuv444p", "-g", (fps * 2).ToString() });
+        if (mic is not null) a.AddRange(new[] { "-c:a", "aac", "-b:a", "160k" });
+        a.Add(output);
+        return a;
+    }
+
+    public void Start()
+    {
+        if (State is RecorderState.Recording) return;
+        var seg = Path.Combine(_o.WorkDirectory, $"segment-{_segments.Count:000}.mkv");
+        var psi = new ProcessStartInfo(_tools.Ffmpeg)
+        {
+            RedirectStandardInput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
+        };
+        foreach (var x in BuildSegmentArgs(EffectiveRegion, _o.Fps, _o.DrawMouse, _o.Microphone, seg)) psi.ArgumentList.Add(x);
+        var p = Process.Start(psi) ?? throw new InvalidOperationException("ffmpeg konnte nicht gestartet werden.");
+        p.EnableRaisingEvents = true;
+        p.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (_log) _log.AppendLine(e.Data); };
+        p.BeginErrorReadLine();
+        p.Exited += (_, _) =>
+        {
+            if (ReferenceEquals(_proc, p) && State == RecorderState.Recording)
+            {
+                _clock.Stop();
+                Error = "Die Aufnahme wurde unerwartet beendet: " + LogTail();
+                State = RecorderState.Failed;
+                StateChanged?.Invoke(this, EventArgs.Empty);
+            }
+        };
+        _proc = p;
+        _segments.Add(seg);
+        _clock.Start();
+        State = RecorderState.Recording;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private string LogTail() { lock (_log) { var s = _log.ToString(); return s.Length > 800 ? s[^800..] : s; } }
+
+    /// <summary>Ends the current segment gracefully ('q' makes ffmpeg finalize the file).</summary>
+    private async Task EndSegmentAsync()
+    {
+        var p = _proc;
+        _proc = null;
+        if (p is null) return;
+        try
+        {
+            if (!p.HasExited)
+            {
+                await p.StandardInput.WriteAsync('q');
+                await p.StandardInput.FlushAsync();
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                try { await p.WaitForExitAsync(cts.Token); }
+                catch (OperationCanceledException) { p.Kill(true); }
+            }
+        }
+        catch (IOException) { /* already exited */ }
+        finally { p.Dispose(); }
+    }
+
+    public async Task PauseAsync()
+    {
+        if (State != RecorderState.Recording) return;
+        State = RecorderState.Paused;
+        _clock.Stop();
+        await EndSegmentAsync();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Resume() { if (State == RecorderState.Paused) Start(); }
+
+    /// <summary>Stops and joins segments into <paramref name="outputFile"/> (stream copy, no quality loss).</summary>
+    public async Task<string> StopAsync(string outputFile, CancellationToken ct = default)
+    {
+        var failed = State == RecorderState.Failed;
+        State = RecorderState.Finished;
+        _clock.Stop();
+        await EndSegmentAsync();
+        var existing = _segments.Where(s => File.Exists(s) && new FileInfo(s).Length > 1024).ToList();
+        if (existing.Count == 0)
+            throw new InvalidOperationException("Es wurde nichts aufgenommen." + (failed ? " " + Error : ""));
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputFile))!);
+        if (existing.Count == 1)
+        {
+            File.Move(existing[0], outputFile, overwrite: true);
+        }
+        else
+        {
+            var list = Path.Combine(_o.WorkDirectory, "segments.txt");
+            await File.WriteAllLinesAsync(list, existing.Select(s => "file '" + s.Replace("\\", "/").Replace("'", "'\\''") + "'"), ct);
+            var r = await FfmpegRunner.RunAsync(_tools.Ffmpeg, new[] { "-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", outputFile }, ct);
+            if (!r.Success) throw new InvalidOperationException("Segmente konnten nicht zusammengefügt werden: " + r.StdErrTail);
+        }
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        return outputFile;
+    }
+
+    /// <summary>Discards everything recorded so far.</summary>
+    public async Task CancelAsync()
+    {
+        State = RecorderState.Finished;
+        _clock.Stop();
+        await EndSegmentAsync();
+        Cleanup();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Cleanup()
+    {
+        try { if (Directory.Exists(_o.WorkDirectory)) Directory.Delete(_o.WorkDirectory, true); }
+        catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_proc is not null) await EndSegmentAsync();
+    }
+}

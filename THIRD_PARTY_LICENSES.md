@@ -39,7 +39,10 @@ Greenshot (GPL-3.0), ShareX (GPL-3.0), Flameshot (GPL-3.0), ksnip (GPL-3.0), Los
 ScreenToGif (MS-PL), Kap (MIT). Geprüfte Commits: `Data/DevVault/Research/References.md`. Da kein Code übernommen wurde,
 entstehen aus diesen Projekten keine Lizenzpflichten.
 
-## Geplant (noch nicht enthalten)
+## Externe Programme (nicht im Paket enthalten)
 
-- **FFmpeg** (Phase 6, als externer Prozess): LGPL-2.1+ oder GPL (je nach Build). Bei Mitlieferung: Lizenztext, Quellcode-Angebot
-  bzw. Link zur exakten Quelle und Build-Konfiguration beilegen. Für die Weitergabe einen LGPL-Build bevorzugen.
+- **FFmpeg / FFprobe** (für Video und GIF, seit 0.2.0): wird als eigenständiger Prozess aufgerufen, nicht gelinkt und **nicht mitgeliefert**.
+  CaptureDoc sucht es in `Runtime/ffmpeg/`, dann im System-PATH. Lizenz: LGPL-2.1+ oder GPL-2.0+/3.0 – abhängig vom konkreten Build
+  (z. B. sind „full“-Builds mit libx264 GPL). **Wer FFmpeg in den portablen Ordner legt und diesen weitergibt**, muss die Lizenz des
+  verwendeten Builds beilegen und den Quellcode anbieten bzw. auf die exakte Quelle verweisen. Für die Weitergabe einen LGPL-Build bevorzugen;
+  dieser enthält kein libx264 – dann nutzt man im MP4-Export einen Hardware-Encoder oder den MediaFoundation-Encoder (geplant).

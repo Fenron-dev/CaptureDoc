@@ -50,7 +50,13 @@ public sealed class PlatformSettings
         new() { Action = "window", Gesture = "Alt+PrintScreen" },
         new() { Action = "screen", Gesture = "Ctrl+PrintScreen" },
         new() { Action = "last-region", Gesture = "Shift+PrintScreen" },
+        new() { Action = "video", Gesture = "Ctrl+Shift+PrintScreen" },
     };
+    public int RecordingFps { get; set; } = 30;
+    public int RecordingCountdown { get; set; } = 3;
+    public bool RecordCursor { get; set; } = true;
+    public bool RecordMicrophone { get; set; }
+    public string? MicrophoneDevice { get; set; }
     public bool IncludeCursor { get; set; }
     public int DelaySeconds { get; set; }
     public PixelRect? LastRegion { get; set; }
@@ -77,6 +83,9 @@ public sealed class SettingsStore
     {
         Shared = LoadFile<SharedSettings>(SharedPath) ?? new SharedSettings();
         Platform = LoadFile<PlatformSettings>(PlatformPath) ?? new PlatformSettings();
+        // settings written by older versions: add hotkey actions introduced later
+        foreach (var def in new PlatformSettings().Hotkeys)
+            if (Platform.Hotkeys.All(h => h.Action != def.Action)) Platform.Hotkeys.Add(def);
     }
 
     public void Save()

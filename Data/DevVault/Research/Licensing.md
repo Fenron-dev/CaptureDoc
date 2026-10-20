@@ -24,7 +24,7 @@ Vollständige Liste mit Versionen: `THIRD_PARTY_LICENSES.md` im Repo-Wurzelverze
 | CommunityToolkit.Mvvm 8.4.2 | MIT | Hinweis beilegen |
 | ANGLE (`av_libglesv2.dll`, über Avalonia) | BSD-3 | Hinweis beilegen |
 | xUnit (nur Tests, nicht ausgeliefert) | Apache-2.0 | – |
-| FFmpeg (Phase 6, externer Prozess, **nicht** gebündelt im MVP) | LGPL-2.1+ bzw. GPL bei `--enable-gpl` (z. B. libx264) | Bei Mitlieferung: Lizenztext, Quellangebot, Build-Konfiguration dokumentieren |
+| FFmpeg (seit 0.2.0, externer Prozess, **nicht** gebündelt) | LGPL-2.1+ bzw. GPL bei `--enable-gpl` (z. B. libx264) | Bei Mitlieferung: Lizenztext, Quellangebot, Build-Konfiguration dokumentieren |
 
 ## Interne Nutzung ≠ Lizenzfreiheit
 - GPL-Pflichten greifen bei **Weitergabe/„Conveying“** (GPL-3.0 §6). Reine interne Nutzung in derselben Organisation gilt nach überwiegender Auffassung nicht als Weitergabe – **aber**: Weitergabe an Dritte (Kunden, Partner, externe Dienstleister, USB-Stick an Fremdfirma) ist Weitergabe.

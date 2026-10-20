@@ -36,6 +36,7 @@ flowchart TB
 |---|---|---|
 | `CaptureDoc.Core` | Datenmodell, Ebenen, Undo, Projektformat, portable Pfade/Settings, Export-Profile, Größenoptimierung, Obsidian-Export (Planung + Markdown) | nur BCL |
 | `CaptureDoc.Rendering` | Szene → Pixel (Editor **und** Export), Encoder PNG/JPEG/WebP, Schwärzung „einbrennen“ | Core, SkiaSharp |
+| `CaptureDoc.Media` | Video/GIF über externes FFmpeg: Aufnahme (Segmente, Pause), MP4/GIF-Export mit Größenoptimierung, Frames | Core |
 | `CaptureDoc.Platform.Windows` | Capture (GDI), Fensterliste, globale Hotkeys, Bild-Zwischenablage | Core (P/Invoke, keine UI) |
 | `CaptureDoc.App` | Avalonia-UI: Quick Capture, Auswahl-Overlay, Editor, Studio | alle |
 | `tests/*` | xUnit | – |

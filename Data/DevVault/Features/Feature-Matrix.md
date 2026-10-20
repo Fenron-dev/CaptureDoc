@@ -18,11 +18,11 @@ Belege: [[Greenshot]], [[ShareX]], [[Other-Projects]].
 | Ebenenpanel (Photoshop-artig) | – | ◐ | – | – | – | – | – | ◐ (Quellen) | – (keiner vollständig) | **eigen**, Kernfeature |
 | Wiederbearbeitbares Projekt | ◐ (.greenshot binär) | ? | ✅ (.stg ZIP) | – | ◐ | ✅ (Projekt-JSON) | – | ✅ (Szenen) | ZIP+JSON (STG-Muster) | **eigen** `.capturedoc` |
 | Undo/Redo | ✅ | ✅ (Memento) | ✅ | ✅ | ✅ | ✅ | – | – | Memento | **eigen** |
-| Video-Aufnahme | – | ✅ (FFmpeg) | ✅ (DXGI) | – | – | – | ✅ (aperture) | ✅ | FFmpeg ddagrab / WGC | Phase 6 |
-| GIF-Export mit Palette | – | ✅ (palettegen) | ✅ (eigener Encoder, Gifski) | – | – | – | ✅ | – | FFmpeg palettegen/paletteuse | Phase 6 |
+| Video-Aufnahme | – | ✅ (FFmpeg) | ✅ (DXGI) | – | – | – | ✅ (aperture) | ✅ | FFmpeg gdigrab/ddagrab | ✅ 0.2.0 (gdigrab) |
+| GIF-Export mit Palette | – | ✅ (palettegen) | ✅ (eigener Encoder, Gifski) | – | – | – | ✅ | – | FFmpeg palettegen/paletteuse | ✅ 0.2.0 |
 | Verlustfreier Schnitt | – | – | – | – | – | ✅ (`-c copy`) | – | – | Stream Copy (LC) | Phase 6/7 |
 | Hardware-Encoding | – | ✅ (nvenc/amf/qsv) | ? | – | – | ✅ | ? | ✅ | FFmpeg-Encoderwahl | Phase 6 |
-| Dateigrößen-Zielwert | – | – | ◐ | – | – | – | – | – | – (keiner mit Verifikation) | **eigen**, iterativ + verifiziert |
+| Dateigrößen-Zielwert | – | – | ◐ | – | – | – | – | – | – (keiner mit Verifikation) | ✅ Bild, GIF, MP4 – iterativ + verifiziert |
 | Obsidian-Export | – | – | – | – | – | – | – | – | – | **eigen**, Kernfeature |
 | Dokumentations-Builder | – | – | – | – | – | – | – | – | – | **eigen** |
 | Portable Nutzung | ✅ (Portable-Paket) | ✅ (portable) | ✅ | ◐ | ◐ | ✅ | – | ✅ (portable mode) | relative Datenpfade | **eigen**, Kernanforderung |

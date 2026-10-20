@@ -3,6 +3,12 @@ tags: [changelog]
 ---
 # Changelog
 
+## 0.2.0 – 2026-10-20
+- **HTML-Export**: Bild-Popup (Lightbox) mit Einpassen/1:1, Blättern, Tastatursteuerung; funktioniert offline.
+- **Video/GIF (Phase 6)**: Bildschirmaufnahme mit Pause, Video-Editor (Timeline, Start/Ende, Schnitte), Export MP4 und GIF mit geprüften Größenlimits, Frame → Editor/Anleitung. Benötigt externes FFmpeg ([[ADR-006 Video mit FFmpeg]]).
+- Einstellungen: Video-FPS, Countdown, Cursor, Mikrofon; neuer Hotkey wird in bestehende Einstellungen automatisch ergänzt.
+- Behoben: Rahmen der Aufnahme bestand aus vier Fenstern, die Windows auf mind. 39 px Höhe vergrößerte (lagen damit über dem Bereich) → ein transparentes, durchklickbares Fenster; Aufnahmeleiste wurde vor dem Layout positioniert und landete oben links → Positionierung nach dem ersten Layout.
+
 ## 0.1.0 – 2026-10-20
 Erster nutzbarer Windows-MVP (Quick Capture, Ebeneneditor, Projekte, Bildexport, Obsidian-Export). Details: [[Progress]].
 

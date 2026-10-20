@@ -311,6 +311,13 @@ public sealed class StudioWindow : Window
         UpdateTitle();
     }
 
+    public void AddCapturedImage(SkiaSharp.SKImage image, byte[] png, string name)
+    {
+        var page = _session.AddPage(image, png, name);
+        AddStep(page, name);
+        Activate();
+    }
+
     public void AddPageFrom(ProjectSession source, Page page)
     {
         var copy = _session.ImportPage(source, page);
