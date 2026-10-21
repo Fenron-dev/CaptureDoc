@@ -31,4 +31,7 @@
     <ProjectReference Include="..\CaptureDoc.Platform.Windows\CaptureDoc.Platform.Windows.csproj" />
     <ProjectReference Include="..\CaptureDoc.Platform.Unix\CaptureDoc.Platform.Unix.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="CaptureDoc.App.Tests" />
+  </ItemGroup>
 </Project>

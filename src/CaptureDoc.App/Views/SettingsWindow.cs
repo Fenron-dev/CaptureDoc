@@ -50,6 +50,17 @@ public sealed class SettingsWindow : Window
                 micDevice.SelectedIndex = Math.Max(0, list.IndexOf(s.Platform.MicrophoneDevice ?? ""));
                 if (list.Count == 0) { micDevice.PlaceholderText = "Kein Mikrofon gefunden"; recMic.IsEnabled = false; }
             }, TaskScheduler.FromCurrentSynchronizationContext());
+        var live = new CheckBox { Content = "Zeichenleiste während der Aufnahme (Stift, Marker, Pfeil … – wird nicht mit aufgenommen, sondern als bearbeitbare Annotation gespeichert)", IsChecked = s.Shared.LiveToolbar };
+        var liveOpacity = new Slider { Minimum = 30, Maximum = 100, Value = s.Shared.LiveToolbarOpacity * 100, Width = 160 };
+        var liveSeconds = new NumericUpDown { Value = (decimal)s.Shared.LiveAnnotationSeconds, Minimum = 0, Maximum = 600, Increment = 1, FormatString = "0.#", Width = 120 };
+        var liveTools = new WrapPanel();
+        var liveBoxes = new List<(string Id, CheckBox Box)>();
+        foreach (var (id, label) in new[] { ("pen", "Stift"), ("marker", "Textmarker"), ("arrow", "Pfeil"), ("rect", "Rahmen"), ("ellipse", "Kreis"), ("step", "Nummer"), ("text", "Text"), ("undo", "Rückgängig"), ("clear", "Alles ausblenden") })
+        {
+            var cb = new CheckBox { Content = label, IsChecked = s.Shared.LiveTools.Contains(id), Margin = new Thickness(0, 0, 10, 0) };
+            liveBoxes.Add((id, cb));
+            liveTools.Children.Add(cb);
+        }
         var ffInfo = Ui.Label(app.Ffmpeg is { } f2 ? $"FFmpeg: {f2.Source} ({f2.Ffmpeg})" : "⚠ FFmpeg nicht gefunden – ffmpeg.exe und ffprobe.exe nach Runtime\\ffmpeg\\ kopieren.", 11, opacity: 0.7);
 
         var dataInfo =Ui.Label($"Datenordner: {app.Env.DataRoot}" + (app.Env.IsFallbackLocation ? "\n⚠ Ausweichort, da der portable Ordner schreibgeschützt ist." : ""), 11, opacity: 0.7);
@@ -67,6 +78,10 @@ public sealed class SettingsWindow : Window
             s.Platform.RecordingCountdown = (int)(recCountdown.Value ?? 3);
             s.Platform.RecordCursor = recCursor.IsChecked == true;
             s.Platform.HighlightClicks = recClicks.IsChecked == true;
+            s.Shared.LiveToolbar = live.IsChecked == true;
+            s.Shared.LiveToolbarOpacity = liveOpacity.Value / 100;
+            s.Shared.LiveAnnotationSeconds = (double)(liveSeconds.Value ?? 6);
+            s.Shared.LiveTools = liveBoxes.Where(b => b.Box.IsChecked == true).Select(b => b.Id).ToList();
             s.Platform.RecordMicrophone = recMic.IsChecked == true && micDevice.SelectedItem is string;
             if (micDevice.SelectedItem is string mic) s.Platform.MicrophoneDevice = mic;
             foreach (var (setting, box) in hotkeyBoxes)
@@ -96,6 +111,9 @@ public sealed class SettingsWindow : Window
                     Ui.Row(Ui.Field("Bilder pro Sekunde", recFps), Ui.Field("Countdown (s)", recCountdown)),
                     recCursor, recClicks,
                     Ui.Row(recMic, micDevice),
+                    live,
+                    Ui.Row(Ui.Field("Deckkraft der Leiste %", liveOpacity), Ui.Field("Zeichnung sichtbar (s, 0 = bis „Alles ausblenden“)", liveSeconds)),
+                    Ui.Field("Sichtbare Werkzeuge", liveTools),
                     Ui.Label("Systemton: unter Windows das Gerät „Stereomix“ wählen (ggf. in der Windows-Soundsteuerung unter „Aufnahme“ aktivieren). macOS zeigt Klicks selbst an.", 11, opacity: 0.6),
                     ffInfo,
                     dataInfo,

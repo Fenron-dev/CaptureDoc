@@ -168,7 +168,8 @@ public static class ProjectFile
     public static HashSet<string> CollectUsedAssets(CaptureProject project)
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var pages = project.Pages.Concat(project.Guide.Steps.Select(s => s.Video?.Overlay?.Page).OfType<Page>());
+        var overlays = project.Guide.Steps.Select(s => s.Video?.Overlay).OfType<VideoOverlay>().ToList();
+        var pages = project.Pages.Concat(overlays.Select(o => o.Page)).Concat(overlays.SelectMany(o => o.Slides.Select(sl => sl.Page)));
         foreach (var p in pages)
             foreach (var l in p.AllLayers().OfType<ImageLayer>())
                 if (!string.IsNullOrEmpty(l.AssetId)) set.Add(l.AssetId);

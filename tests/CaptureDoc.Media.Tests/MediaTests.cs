@@ -214,6 +214,23 @@ public class FfmpegIntegrationTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.Equal(320, info.Width);
         Assert.Equal(240, info.Height);
         Assert.InRange(info.Duration, 2.0, 3.6);
+        // the end of the recording clock maps to the end of the joined video (start delay removed)
+        output.WriteLine($"clock {rec.Elapsed.TotalSeconds:0.00} s → video {rec.MapToVideoTime(rec.Elapsed.TotalSeconds):0.00} s, file {info.Duration:0.00} s");
+        Assert.InRange(rec.MapToVideoTime(rec.Elapsed.TotalSeconds), info.Duration - 0.25, info.Duration + 0.05);
+        Assert.True(rec.MapToVideoTime(1.6) > 1.0);      // shortly after the pause → in the second segment
         rec.Cleanup();
+    }
+
+    [Fact]
+    public void Clock_times_are_mapped_per_segment_without_start_delay()
+    {
+        var seg = new List<(double, double)> { (0, 5), (5, 9) };
+        var dur = new List<double> { 4.6, 3.8 };          // ffmpeg started 0.4 s / 0.2 s late
+        Assert.Equal(1.6, ScreenRecorder.MapClock(2, seg, dur), 3);
+        Assert.Equal(0, ScreenRecorder.MapClock(0.1, seg, dur), 3);
+        Assert.Equal(5.4, ScreenRecorder.MapClock(6, seg, dur), 3);
+        Assert.Equal(8.4, ScreenRecorder.MapClock(9, seg, dur), 3);
+        // ffmpeg kept recording 0.3 s after the clock stopped → its start delay was 0.3 s larger
+        Assert.Equal(1.3, ScreenRecorder.MapClock(2, seg, dur, new[] { 0.3, 0.0 }), 3);
     }
 }

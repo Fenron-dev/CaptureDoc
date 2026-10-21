@@ -1,30 +1,36 @@
 ---
 tags: [feature, video]
-status: Phase 6 + 7 implementiert
+status: Phase 6 + 7 implementiert, Video-Studio seit 0.4.0
 ---
-# Video- und GIF-Editor
+# Video- und GIF-Editor („Video-Studio“)
 
-Technik: [[ADR-006 Video mit FFmpeg]]. Code: `src/CaptureDoc.Media/` (`ScreenRecorder`, `VideoExporter`, `GifOptimizer`, `OverlaySpec`), UI `src/CaptureDoc.App/Video/`.
+Technik: [[ADR-006 Video mit FFmpeg]]. Code: `src/CaptureDoc.Media/` (`ScreenRecorder`, `VideoExporter`, `GifOptimizer`, `OverlaySpec`), UI `src/CaptureDoc.App/Video/` (`VideoEditorWindow`, `VideoTimeline`, `LiveDrawLayer`, `OverlayRenderer`, `VideoRenderPlan`). Bedienung: [[Video]].
 
 ## Aufnahme
-Bereich/Fenster/Bildschirm, Countdown, roter Rahmen + Timer-Leiste (aus der Aufnahme ausgeschlossen), Pause/Fortsetzen, FPS, Cursor, Mikrofon (Windows DirectShow; Systemton über „Stereomix“), **Mausklicks werden als bearbeitbare Ring-Annotationen** im Editor angelegt (Windows: Low-Level-Maus-Hook nur während der Aufnahme; macOS: Klicks von avfoundation).
+- Bereich/Fenster/Bildschirm, Countdown, roter Rahmen + Timer-Leiste (aus der Aufnahme ausgeschlossen), Pause/Fortsetzen, FPS, Cursor, Mikrofon (Windows DirectShow; Systemton über „Stereomix“).
+- **Zeitbasis**: Die Aufnahme-Uhr läuft nicht in Pausen. Nach dem Stopp wird pro Segment die echte Länge gemessen; mit der gemessenen Nachlaufzeit (`'q'` → Prozessende) wird die Startverzögerung von FFmpeg herausgerechnet (`ScreenRecorder.MapToVideoTime`). Gilt für Klicks und Live-Zeichnungen.
+- **Mausklicks** (Windows: Low-Level-Hook nur während der Aufnahme) → Ring-Annotationen; Doppelklicks (< 0,5 s, ≤ 12 px) werden zusammengefasst. Klicks im Zeichenmodus werden ignoriert.
+- **Live-Zeichnen** (`LiveDrawLayer`): transparentes Fenster exakt über dem Bereich, `WDA_EXCLUDEFROMCAPTURE` → nicht im Rohvideo. Zeiger-Modus = durchklickbar (`WS_EX_TRANSPARENT`), Zeichenmodus = fängt die Maus (Hintergrund mit Alpha 1, sonst gehen Klicks auf leere Pixel durch). Benutzt dieselbe `EditorCanvas` wie der Editor. Jede Zeichnung bekommt Start = Aufnahme-Uhr und Ende = Start + Einstellung (0 = bis „Alles ausblenden“). Werkzeuge und Deckkraft der Leiste in den Einstellungen.
 
-## Schneiden
-- Start/Ende (I/O), Abschnitte markieren (X zweimal); markierte Abschnitte erscheinen als Chips „✂ von–bis“ mit **✕ zum Entfernen**, Entf löscht den Schnitt unter dem Abspielkopf.
-- **„✂ Schnitte anwenden“** schreibt eine neue, gekürzte Fassung (`…_geschnitten.mkv`) und öffnet sie – das Original bleibt erhalten. (Vorher wurden Schnitte nur beim Export angewendet, was in der Oberfläche nicht erkennbar war.)
-- MP4-Export „verlustfrei schneiden“ (Stream Copy, LosslessCut-Ansatz) für H.264-4:2:0-Videos; Schnittpunkte liegen dann auf Keyframes.
+## Video-Studio (0.4.0, Layout wie gängige Screen-Recorder)
+- **Zeichnen direkt im Video**: `EditorCanvas` mit `Underlay` = aktuelles Videobild (Vorschau-JPEG beim Abspielen, Vollbild beim Anhalten) und `LayerFilter` = Ebenen, die zur Abspielposition sichtbar sind (auch für Treffer). Effekte (Schwärzen, Verpixeln, Lupe) arbeiten damit in der Vorschau auf echten Pixeln. Neue Ebenen erhalten über `LayerCreated` (noch im selben Undo-Schritt) ihr Zeitfenster.
+- Bewegte Annotationen werden über `DisplayOverride` an der interpolierten Stelle gezeigt; die ausgewählte bleibt an ihrer bearbeitbaren Position.
+- **Spuren-Timeline** (`VideoTimeline`): Kopfspalte mit Namen, Lineal (ziehen = Bereich wählen, X = schneiden), Video (Thumbnails, Schnitte, Start/Ende), Zoom-Keyframes (ziehen), Folien (ziehen/Doppelklick), eine Spur je Ebene (verschieben/Ränder, Einrasten am Abspielkopf). Zeitachsen-Zoom mit Strg+Rad, Scrollen mit Umschalt+Rad/Scrollleiste. Zeit-Änderungen sind eine Undo-Transaktion.
+- Rechts: Zeit & Reihenfolge der Auswahl + `PropertiesPanel`, `LayersPanel`, Zoom & Folien.
+- **Zoom-Werkzeug**: Rechteck aufziehen = Keyframe mit diesem Ausschnitt (Seitenverhältnis des Videos).
+- **Folien** (`VideoSlide` im Modell: `At` in Quellsekunden, `Duration`, eigene `Page` mit Hintergrundfarbe; Ebenenzeiten relativ zur Folie). Eigener Bearbeitungsmodus mit eigener Zeitachse; Vorlagen Leer/Titel/Zusammenfassung (Punkte erscheinen nacheinander).
+- **Side-car**: Ohne Studio-Schritt werden Clip, Annotationen und Folien beim Schließen in `<Video>.capturedoc` gespeichert (normales Projekt mit einem Video-Schritt) und beim Öffnen geladen.
 
-## Zeitgesteuerte Annotationen (Phase 7)
-- „✎ Annotationen bearbeiten…“ öffnet den normalen Ebenen-Editor mit dem aktuellen Videobild als gesperrter Vorlage (wird nicht exportiert).
-- Jede Ebene hat **von/bis** (Buttons ⇤/⇥ = Abspielposition) und optional **Bewegung** bis zu einer Zielposition (Keyframes).
-- **Zoom & Schwenk:** Klick ins Vorschaubild setzt den Mittelpunkt, „🔍 Keyframe hier“ mit Faktor 1–4×, weiche Übergänge.
-- Live-Vorschau der Annotationen und des Zoom-Ausschnitts über dem Video.
-- **Spuren** unter der Timeline (seit 0.3.1): ein Balken je Annotation, ziehen/Ränder ändern das Zeitfenster; ▲/▼ ändert die Ebenenreihenfolge.
-- Export: Text/Pfeile/Formen/Schritte als transparente PNG-Overlays (`overlay … enable='between(t,a,b)'`, Bewegung über x/y-Ausdrücke), Schwärzen/Verpixeln/Weichzeichnen/Lupe direkt auf den Videopixeln, Zoom über `zoompan` (Zeitstempel danach neu gesetzt). **Reihenfolge der Filterkette = Ebenenreihenfolge** (Effekte und PNGs verschachtelt, eine Schwärzung wirkt nur auf darunterliegende Ebenen); **Zoom als letzter Schritt**, damit Schwärzungen und Annotationen auf ihrem Inhalt bleiben.
+## Export
+- Text/Pfeile/Formen/Schritte als transparente PNG-Overlays (`overlay … enable='between(t,a,b)'`, Bewegung über x/y-Ausdrücke), Schwärzen/Verpixeln/Weichzeichnen/Lupe direkt auf den Videopixeln. **Reihenfolge der Filterkette = Ebenenreihenfolge**; **Zoom (`zoompan`) als letzter Schritt**.
+- Hervorhebung („multiply“) wird im Overlay-PNG mit 45 % Deckkraft gerendert (multiply auf transparentem Grund wäre deckend).
+- **Folien** (`VideoExporter.ComposeAsync`): Hauptvideo mit Schnitten/Overlays rendern → je Folie ein Segment aus `color=`-Quelle + eigenen Overlays (+ `anullsrc` bei Ton) → Hauptvideo an den Einfügepunkten (Quellzeit → Ausgabezeit über die behaltenen Abschnitte) teilen und mit `concat` verbinden. Das Ergebnis ist eine Arbeitsdatei, die wie eine normale Quelle exportiert wird (`VideoRenderPlan`).
 
 ## In die Anleitung
-„🎬 Video → Anleitung“ legt einen **Video-Schritt** an (Clip + Schnitte + Annotationen, Posterbild als bearbeitbare Seite). Im Studio: Format MP4/GIF, max. Breite, Ziel-MB, Ton; „✂ Schneiden / Annotieren…“ öffnet den Clip wieder. Export: Obsidian/Markdown `![[…mp4|700]]`, HTML `<video controls poster>`, PDF als Standbild mit Hinweis. Siehe [[Obsidian-Export]].
+„🎬 Video → Anleitung“ legt einen **Video-Schritt** an (Clip + Schnitte + Annotationen + Zoom + Folien, Bilder werden mitkopiert). Export: Obsidian/Markdown `![[…mp4|700]]`, HTML `<video controls poster>`, PDF als Standbild. „Frame → Anleitung/Editor“ übernimmt das Bild mit den sichtbaren Annotationen als Ebenen. Siehe [[Obsidian-Export]].
 
 ## Grenzen
-- Videos werden im Projekt **referenziert** (relativ zur Projektdatei bzw. portabel), nicht eingebettet → beim Weitergeben des Projekts die Videodatei mitgeben.
+- Videos werden im Projekt **referenziert**, nicht eingebettet.
+- Beim normalen Abspielen im Editor werden Folien nicht eingeblendet (Markierung auf der Video-Spur); Vorschau im Folienmodus bzw. im Export.
+- Live-Zeichnen nur unter Windows (der Fenster-Ausschluss aus der Aufnahme ist Windows-spezifisch; sonst wären Zeichnungen doppelt im Video). Getestet headless (Zeichnen, Undo, Zeitumrechnung), nicht bei einer echten Aufnahme am Bildschirm.
 - Linux/Wayland-Aufnahme fehlt ([[ADR-007 macOS und Linux]]).

@@ -4,7 +4,7 @@ status: implementiert
 ---
 # Bildeditor
 
-Werkzeuge: Auswahl, Pfeil, Linie, Rechteck/Ellipse/abgerundet, Text (Inline-Bearbeitung), Infobox, Sprechblase mit Spitze, nummerierte Schritte (Auto-Nummer), Hervorheben (Multiply), Spotlight (rechteckig/elliptisch), Lupe (vergrößerter Ausschnitt), Freihand (geglättet), Schwärzen, Verpixeln (Blockmittelwert), Weichzeichnen, Zuschneiden (nichtdestruktiv).
+Werkzeuge: Auswahl, Pfeil, Linie, Rechteck/Ellipse/abgerundet, Text (Inline-Bearbeitung), Infobox, Sprechblase mit Spitze, nummerierte Schritte (Auto-Nummer), Hervorheben (Multiply), Spotlight (rechteckig/elliptisch), Lupe (vergrößerter Ausschnitt), Stift (geglättet), Textmarker (breit, halbtransparent, Deckung einstellbar), Schwärzen, Verpixeln (Blockmittelwert), Weichzeichnen, Zuschneiden (nichtdestruktiv).
 
 Seite: Skalieren (Bild + alle Ebenen), Leinwandgröße (zentriert), Leinwandfarbe. Zoom (Strg+Mausrad, 100 %, Einpassen). HiDPI: 100 % = 1 Bildpixel pro physischem Bildschirmpixel.
 

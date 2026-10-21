@@ -3,6 +3,18 @@ tags: [changelog]
 ---
 # Changelog
 
+## 0.4.0 – 2026-10-21
+- **Video-Studio neu**: Werkzeuge links, Zeichnen **direkt im Video** (Vorschau nur der zur Abspielposition sichtbaren Annotationen, Schwärzen/Verpixeln/Lupe auf echten Pixeln), rechts Zeit & Reihenfolge + Eigenschaften, Ebenen, Zoom & Folien; der separate Annotations-Editor entfällt.
+- **Spuren-Timeline**: Spurnamen, Lineal (Bereich ziehen + X = schneiden), Video, Zoom-Keyframes, Folien und eine Spur je Annotation; Einrasten am Abspielkopf, Zeitachsen-Zoom (Strg+Rad), Undo für Zeitänderungen.
+- **Folien**: leere Frames mit Hintergrundfarbe (Vorlagen Leer/Titel/Zusammenfassung) mit eigener Zeitachse – Elemente erscheinen nacheinander; werden beim Export zwischen die Videoabschnitte gesetzt (Video pausiert, Ton bleibt synchron).
+- **Zoom-Werkzeug**: Ausschnitt als Rechteck im Video aufziehen.
+- **Live-Zeichnen während der Aufnahme** (Windows): Stift, Textmarker, Pfeil, Rahmen, Kreis, Nummer, Text, Farben, Stärke, Rückgängig, Ausblenden – nicht im Rohvideo, sondern als bearbeitbare Annotationen; Leiste halbtransparent, Werkzeuge in den Einstellungen wählbar.
+- **Stift und Textmarker** (auch im Bildeditor, Taste G): Farbe, Stärke, Deckung.
+- **Klick-Markierungen**: FFmpeg-Startverzögerung wird pro Segment herausgerechnet, Doppelklicks werden zusammengefasst, keine Markierung beim Zeichnen.
+- **Annotationen einer Aufnahme bleiben erhalten**: automatisch in `<Aufnahme>.capturedoc` neben dem Video.
+- **Frame → Anleitung/Editor** übernimmt die sichtbaren Annotationen als Ebenen.
+- Behoben: **Eigenschaften-Leiste im Editor scrollte nicht** (abgeleiteter `ScrollViewer` ohne Template) – Linienstärke usw. waren unerreichbar; Eigenschaften zeigten nach Seitenwechsel die alte Auswahl.
+
 ## 0.3.1 – 2026-10-21
 - **Annotations-Spuren** unter der Video-Timeline: je Annotation ein Balken, ziehen = zeitlich verschieben, Ränder = Beginn/Ende; Klick wählt die Annotation in der Seitenleiste.
 - **Ebenenreihenfolge im Video** wie im Screenshot-Editor: ▲/▼ je Annotation; eine Schwärzung verdeckt nur, was unter ihr liegt (z. B. Nummer darüber bleibt sichtbar).

@@ -1,12 +1,12 @@
 # CaptureDoc
 
-Portables Screenshot- und Dokumentations-Studio (interne Nutzung). Version 0.3.0 – Windows getestet, macOS/Linux enthalten (ungetestet).
+Portables Screenshot- und Dokumentations-Studio (interne Nutzung). Version 0.4.0 – Windows getestet, macOS/Linux enthalten (ungetestet).
 
 - **Quick Capture:** Bereich / Fenster / Monitor / alle Bildschirme / letzter Bereich, Verzögerung, Cursor, Serienaufnahme, globale Tastenkürzel, Tray, Startbefehle.
 - **Editor mit Ebenen:** Jede Annotation ist eine eigene, nachträglich bearbeitbare Ebene (Pfeil, Linie, Rechteck, Ellipse, Text, Infobox, Sprechblase, nummerierte Schritte, Hervorhebung, Spotlight, Lupe, Freihand, Schwärzen/Verpixeln/Weichzeichnen, eingefügte Bilder). Ebenenpanel mit Sichtbarkeit, Sperren, Drag & Drop, Gruppen, Deckkraft; Undo/Redo; nichtdestruktiver Zuschnitt; Stilvorlagen, Pipette, Rahmen & Schatten, Bild anheften.
 - **Projekte `.capturedoc`:** ZIP + JSON, versioniert (v2, ältere Projekte werden migriert), Prüfsummen, atomares Speichern, Konflikterkennung, Auto-Save mit Absturz-Wiederherstellung.
 - **Export:** PNG/JPEG/WebP mit max. Breite/Höhe und **geprüftem** Dateigrößenlimit (weich/hart), Exportprofile, Zwischenablage.
-- **Video & GIF:** Bildschirmaufnahme mit Rahmen, Timer, Pause und Klick-Markierung; Timeline-Editor (Start/Ende, Schnitte setzen, entfernen und anwenden, verlustfreies Schneiden); zeitgesteuerte Annotationen mit Bewegung, Zoom/Pan; Export als MP4 oder GIF mit **geprüftem** Größenlimit. Benötigt FFmpeg (siehe unten).
+- **Video & GIF:** Bildschirmaufnahme mit Rahmen, Timer, Pause, Klick-Markierung und **Live-Zeichnen** (Windows); Video-Studio mit Annotationen **direkt im Video**, Spuren-Timeline (Zeitfenster ziehen, Reihenfolge), Stift/Textmarker, Zoom/Schwenk, **Folien** für Titel und Zusammenfassungen, Schnitte (Bereich ziehen + X); Export als MP4 oder GIF mit **geprüftem** Größenlimit. Benötigt FFmpeg (siehe unten).
 - **Documentation Studio:** Schritt-für-Schritt-Anleitungen aus Bildern **und Videos**, 9 Vorlagen, Export nach **Obsidian** (Vorschau, Konfliktschutz, Linkprüfung, Videos eingebettet), Markdown, HTML (Bild-Popup, Video-Player) und **PDF**.
 - Offline, keine Telemetrie, keine Uploads, keine Installation, keine Adminrechte.
 
@@ -56,8 +56,8 @@ Das Video liegt neben dem Projekt (relativer Pfad) – bei Weitergabe des Projek
 | Bereich aufnehmen | `Druck` · Tray-Klick · Leiste „Bereich“ – ziehen = Bereich, Klick = Fenster/Bildschirm, Esc = Abbruch |
 | Aktives Fenster / Bildschirm / letzter Bereich | `Alt+Druck` / `Strg+Druck` / `Umschalt+Druck` |
 | Video aufnehmen | `Strg+Umschalt+Druck` · Leiste „● Video / GIF“ · Tray – Pause/Stopp in der Aufnahmeleiste |
-| Video-Editor | Leertaste abspielen · I/O Start/Ende · X Schnitt von/bis · Entf Schnitt unter der Abspielmarke entfernen · ←/→ Frame (Umschalt = 1 s) |
-| Werkzeuge im Editor | V Auswahl · A Pfeil · L Linie · R Rechteck · E Ellipse · T Text · I Infobox · U Sprechblase · N Schritt · H Hervorheben · S Spotlight · M Lupe · F Freihand · B Schwärzen · P Verpixeln · W Weichzeichnen · C Zuschneiden · K Pipette |
+| Video-Studio | Leertaste abspielen · Lineal ziehen + X = Bereich schneiden · I/O Start/Ende · Entf Schnitt/Annotation entfernen · ,/. Bild · ←/→ Bild bzw. Auswahl schieben · Z Zoom-Werkzeug · Strg+Mausrad Zeitachse |
+| Werkzeuge im Editor | V Auswahl · A Pfeil · L Linie · R Rechteck · E Ellipse · T Text · I Infobox · U Sprechblase · N Schritt · H Hervorheben · S Spotlight · M Lupe · F Stift · G Textmarker · B Schwärzen · P Verpixeln · W Weichzeichnen · C Zuschneiden · K Pipette |
 | Bearbeiten | Strg+Z/Y · Entf · Pfeiltasten (Umschalt = 10 px) · Strg+D duplizieren · Strg+G / Strg+Umschalt+G gruppieren · Strg+[ / ] Reihenfolge · Doppelklick/F2 Text bearbeiten |
 | Ausgabe | Strg+C Bild kopieren · Strg+E Export-Dialog · Strg+Umschalt+E schnell speichern · Strg+S Projekt speichern · Strg+P anheften · Strg+Umschalt+C/V Ebenen kopieren/einfügen |
 

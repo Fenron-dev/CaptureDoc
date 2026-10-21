@@ -28,6 +28,11 @@ public sealed class ScreenRecorder : IAsyncDisposable
     private readonly FfmpegTools _tools;
     private readonly RecordingOptions _o;
     private readonly List<string> _segments = new();
+    // recording clock at start/end of each segment, and the real segment lengths (after stop)
+    private readonly List<(double Start, double End)> _segClock = new();
+    // seconds ffmpeg kept capturing after the clock stopped (until 'q' was processed)
+    private readonly List<double> _segTail = new();
+    private List<double>? _segDur;
     private Process? _proc;
     private readonly Stopwatch _clock = new();
     private readonly StringBuilder _log = new();
@@ -109,6 +114,7 @@ public sealed class ScreenRecorder : IAsyncDisposable
         };
         _proc = p;
         _segments.Add(seg);
+        _segClock.Add((_clock.Elapsed.TotalSeconds, double.NaN));
         _clock.Start();
         State = RecorderState.Recording;
         StateChanged?.Invoke(this, EventArgs.Empty);
@@ -122,6 +128,8 @@ public sealed class ScreenRecorder : IAsyncDisposable
         var p = _proc;
         _proc = null;
         if (p is null) return;
+        if (_segClock.Count > 0 && double.IsNaN(_segClock[^1].End)) _segClock[^1] = _segClock[^1] with { End = _clock.Elapsed.TotalSeconds };
+        var tail = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             if (!p.HasExited)
@@ -134,7 +142,12 @@ public sealed class ScreenRecorder : IAsyncDisposable
             }
         }
         catch (IOException) { /* already exited */ }
-        finally { p.Dispose(); }
+        finally
+        {
+            p.Dispose();
+            // finishing the file takes a moment too → count only half of the wait as captured time
+            _segTail.Add(Math.Min(0.5, tail.Elapsed.TotalSeconds / 2));
+        }
     }
 
     public async Task PauseAsync()
@@ -158,6 +171,15 @@ public sealed class ScreenRecorder : IAsyncDisposable
         var existing = _segments.Where(s => File.Exists(s) && new FileInfo(s).Length > 1024).ToList();
         if (existing.Count == 0)
             throw new InvalidOperationException("Es wurde nichts aufgenommen." + (failed ? " " + Error : ""));
+        // real lengths → clock times (clicks, live drawings) can be mapped to video times
+        var durs = new List<double>();
+        foreach (var s in _segments)
+        {
+            double d = 0;
+            if (existing.Contains(s)) { try { d = (await MediaProbe.ProbeAsync(_tools, s, ct)).Duration; } catch (InvalidDataException) { } }
+            durs.Add(d);
+        }
+        _segDur = durs;
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputFile))!);
         if (existing.Count == 1)
         {
@@ -172,6 +194,33 @@ public sealed class ScreenRecorder : IAsyncDisposable
         }
         StateChanged?.Invoke(this, EventArgs.Empty);
         return outputFile;
+    }
+
+    /// <summary>
+    /// Maps the recording clock (what <see cref="Elapsed"/> showed, pauses excluded) to the time in the joined video.
+    /// ffmpeg starts capturing a little after the process start; that delay is measured per segment
+    /// (clock length minus real length) and removed. Valid after <see cref="StopAsync"/>.
+    /// </summary>
+    public double MapToVideoTime(double clock) => MapClock(clock, _segClock, _segDur, _segTail);
+
+    internal static double MapClock(double clock, IReadOnlyList<(double Start, double End)> seg, IReadOnlyList<double>? dur, IReadOnlyList<double>? tail = null)
+    {
+        if (dur is null || dur.Count != seg.Count || seg.Count == 0) return clock;
+        double before = 0;
+        for (var i = 0; i < seg.Count; i++)
+        {
+            var (s, e) = seg[i];
+            if (double.IsNaN(e)) e = s + dur[i];
+            if (clock <= e || i == seg.Count - 1)
+            {
+                // captured clock span = [s + lag, e + tail] and has the real length dur[i]
+                var t = tail is not null && i < tail.Count ? tail[i] : 0;
+                var lag = Math.Max(0, (e + t - s) - dur[i]);
+                return before + Math.Clamp(clock - s - lag, 0, dur[i]);
+            }
+            before += dur[i];
+        }
+        return before;
     }
 
     /// <summary>Discards everything recorded so far.</summary>

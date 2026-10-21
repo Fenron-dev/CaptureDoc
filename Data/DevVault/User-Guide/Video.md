@@ -5,27 +5,40 @@ tags: [anleitung]
 
 Voraussetzung: FFmpeg. Portabel `ffmpeg.exe` + `ffprobe.exe` nach `Runtime\ffmpeg\` legen (oder FFmpeg installiert im PATH). Einstellungen ⚙ zeigen, welches FFmpeg gefunden wurde.
 
+## Aufnehmen
 1. **● Video / GIF** (oder `Strg+Umschalt+Druck`, Tray-Menü) → Bereich ziehen oder Fenster anklicken.
 2. Nach dem Countdown läuft die Aufnahme: roter Rahmen + Leiste mit Timer. Beides ist **nicht** im Video zu sehen.
 3. **❚❚ Pause** / **▶ Weiter** – in der Pause wird nichts aufgenommen. **■ Stopp** öffnet den Video-Editor, **✕** verwirft.
-4. Im Editor: Leertaste = Abspielen, Klick in die Timeline = Springen, **[ Start hier** (I), **Ende hier ]** (O), **✂ Schnitt von/bis** (X, zweimal) markiert einen Abschnitt zum Entfernen (rot, „✂ entfernt“). Markierungen stehen als Liste unter der Timeline – **✕** nimmt eine zurück, **Entf** entfernt die Markierung unter der Abspielmarke. **✂ Schnitte anwenden** schneidet die Abschnitte wirklich heraus und öffnet die gekürzte Fassung (Original bleibt erhalten).
-5. **⇩ GIF…** oder **⇩ MP4…**: Profil wählen, ggf. max. Größe in MB und „Harte Obergrenze“. CaptureDoc probiert so lange, bis die Datei passt – oder sagt, warum es nicht geht.
-6. **🖼 Frame → Editor** / **➕ Frame → Anleitung** macht aus dem aktuellen Bild einen bearbeitbaren Screenshot.
+4. **Live zeichnen** (zweite Zeile der Leiste): 🖱 Zeiger = Programm normal bedienen · ✎ Stift · 🖍 Textmarker · ➜ Pfeil · ▭ Rahmen · ◯ Kreis · ① Nummer · T Text · Farben · −/+ Stärke · ↶ rückgängig · 🧹 alles ausblenden. Zeichnungen verschwinden nach der eingestellten Zeit (Standard 6 s). Sie stehen danach als normale Annotationen mit Zeitfenster im Editor („Live: …“) und sind voll bearbeitbar. Welche Werkzeuge sichtbar sind und wie transparent die Leiste ist: Einstellungen → Video.
+5. Mausklicks (Einstellung „Mausklicks markieren“) werden als Ringe angelegt, Doppelklicks zu einer Markierung zusammengefasst. Beim Zeichnen werden keine Klicks markiert.
 
-Aufnahmen liegen in `Data/Media/Aufnahmen`.
+Aufnahmen liegen in `Data/Media/Aufnahmen`. Annotationen, Schnitte und Folien einer Aufnahme speichert CaptureDoc beim Schließen automatisch in `<Aufnahme>.capturedoc` daneben – beim nächsten Öffnen ist alles wieder da (die Datei lässt sich auch im Studio öffnen).
 
-## Annotationen, Zoom und Klicks
-- Unter der Timeline hat jede Annotation eine **Spur** (oben = vorderste Ebene). Balken ziehen = zeitlich verschieben, linken/rechten Rand ziehen = Beginn/Ende. Graue Balken mit ■ sind Schwärzungen/Lupen.
-- **Reihenfolge** in der Seitenleiste mit ▲/▼ (oder im Ebenen-Editor). Eine Schwärzung verdeckt nur Ebenen *unter* ihr – Nummern oder Pfeile darüber bleiben sichtbar. Zoom wirkt auf alles zusammen, Schwärzungen bleiben auf ihrem Inhalt.
-- Seitenleiste **Annotationen**: „✎ Bearbeiten“ öffnet das aktuelle Bild im Ebeneneditor; jede Ebene bekommt eine Von/Bis-Zeit und optional eine Bewegung (Start-/Endposition). Schwärzen/Verpixeln wirken auf die Videopixel.
-- **Zoom**: Keyframe an der Abspielmarke setzen (Stärke, Mittelpunkt); zwischen Keyframes wird weich gefahren.
-- Ist „Mausklicks markieren“ in den Einstellungen aktiv, erscheinen Klicks als Ringe – sie sind normale Annotationen (verschieben, löschen).
+## Der Video-Editor
+- **Links Werkzeuge**, wie im Bildeditor: Auswahl, Pfeil, Rahmen, Kreis, Text, Infobox, Schritt, Stift, Textmarker, Hervorhebung, Spotlight, Lupe, Schwärzen, Verpixeln, ⤢ Zoom, 🖼 Bild, ▣ Folie. Darüber Farbe, Stärke, Schriftgröße, ↶ ↷.
+- **Direkt ins Video zeichnen**: Eine neue Annotation erscheint ab der Abspielposition für 4 s (änderbar unter „Zeit & Reihenfolge“). Angezeigt und anklickbar sind nur Annotationen, die zum aktuellen Zeitpunkt sichtbar sind. Schwärzen, Verpixeln und Lupe wirken in der Vorschau auf das echte Videobild.
+- **Rechts**: *Eigenschaften* (oben Zeitfenster von/bis mit ⇤/⇥ = Abspielposition, Bewegung, ▲/▼ Reihenfolge; darunter Farbe, Stärke, Text …), *Ebenen* (Liste mit Sichtbarkeit, Sperren, Deckkraft, Drag & Drop), *Zoom & Folien*.
+- **Unten Spuren**: Zeitlineal · 🎬 Video (Vorschaubilder, rote Schnitte, grüne Start-/Endmarken) · 🔍 Zoom-Keyframes · ▣ Folien · eine Spur je Annotation (oben = vorne). Balken ziehen = verschieben, Ränder ziehen = Beginn/Ende (rastet am Abspielkopf ein), Spur anklicken = Annotation auswählen und hinspringen. `Strg`+Mausrad zoomt die Zeitachse, `Umschalt`+Mausrad scrollt.
 
-## Video in die Anleitung
-- **✓ In Anleitung übernehmen** (aus dem Studio geöffnet) bzw. **🎬 Video → Anleitung**: Start/Ende, Schnitte, Annotationen und Zoom werden als **Video-Schritt** gespeichert – nichts wird sofort gerendert.
-- Im Studio: **🎬 Video hinzufügen…** nimmt eine vorhandene Datei auf. Im Schritt: Format (MP4/GIF), max. Breite, max. MB, Ton.
-- Export: Obsidian/Markdown bettet den fertig geschnittenen Clip ein, HTML zeigt einen Player mit Vorschaubild, PDF ein Standbild mit Hinweis.
+## Schneiden
+- **Auf dem Zeitlineal einen Bereich ziehen** und **X** drücken (oder „✂ Schnitt“) = Abschnitt entfernen. Alternativ zweimal X an Beginn und Ende.
+- Entfernte Abschnitte stehen als Liste unter der Leiste – **✕** nimmt sie zurück, **Entf** entfernt die Markierung unter dem Abspielkopf. **[ Start hier** (I) / **Ende hier ]** (O) kürzen Anfang/Ende.
+- Schnitte wirken beim Export immer. **✂ Schnitte anwenden** schreibt zusätzlich eine neue, kürzere Datei (Annotationen und Folien werden dabei eingebrannt – nur nötig, wenn du die gekürzte Datei separat brauchst).
+
+## Ebenen und Reihenfolge
+Eine Schwärzung verdeckt nur Ebenen **unter** ihr – liegt eine Nummer darüber, bleibt sie sichtbar. Reihenfolge mit ▲/▼, `Strg+]` / `Strg+[` oder per Drag & Drop im Tab *Ebenen*. Zoom wirkt auf alles zusammen, Schwärzungen bleiben auf ihrem Inhalt.
+
+## Zoom & Schwenk
+Werkzeug **⤢** (Z): im Video ein Rechteck aufziehen = dieser Ausschnitt ab der Abspielposition. Klicken statt ziehen = Mittelpunkt mit dem Faktor aus dem Tab. Zwischen Keyframes wird weich gefahren; Keyframes auf der Zoom-Spur verschieben, mit Entf löschen.
+
+## Folien (Titel, Zusammenfassung, Checkliste)
+**▣ Folie** links (oder Tab *Zoom & Folien*): Leer, Titel oder Zusammenfassung an der Abspielposition einfügen. Die Folie öffnet sich in einem eigenen Bearbeitungsmodus: Hintergrundfarbe, Dauer, Name; Texte, Bilder, Pfeile usw. mit denselben Werkzeugen. Jedes Element hat eine Spur – so erscheinen Punkte nacheinander wie in einer Präsentation. **✓ Zurück zum Video** beendet den Modus; die Folie steht als Block auf der Folien-Spur (verschieben = Position ändern, Doppelklick = bearbeiten). Beim Export pausiert das Video für die Dauer der Folie.
+
+## Exportieren und in die Anleitung
+- **⇩ GIF…** / **⇩ MP4…**: Profil, max. Größe in MB, „Harte Obergrenze“. Die echte Dateigröße wird geprüft. Annotationen, Zoom und Folien werden eingebrannt.
+- **🎬 Video → Anleitung** bzw. **✓ In Anleitung übernehmen**: alles bleibt als Video-Schritt bearbeitbar. Export: Obsidian/Markdown eingebettet, HTML mit Player, PDF als Standbild.
+- **➕ Frame → Anleitung** / **🖼 Frame → Editor**: aktuelles Bild **mit den sichtbaren Annotationen als Ebenen** – im Folienmodus die Folie.
 - Das Quellvideo bleibt eine eigene Datei neben dem Projekt – beim Weitergeben mitkopieren.
 
 ## Verlustfrei schneiden
-Im MP4-Dialog „verlustfrei schneiden“: ohne Neukodierung, sehr schnell, gleiche Qualität. Nur ohne Annotationen/Zoom und ohne Größenänderung; Schnitte landen auf dem nächsten Keyframe.
+Im MP4-Dialog „verlustfrei schneiden“: ohne Neukodierung, sehr schnell. Nur ohne Annotationen/Zoom/Folien und ohne Größenänderung; Schnitte landen auf dem nächsten Keyframe.

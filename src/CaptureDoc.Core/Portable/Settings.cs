@@ -24,6 +24,16 @@ public sealed class SharedSettings
     public double SeriesIntervalSeconds { get; set; } = 2;
     public bool WarnOnRedactedProjectSave { get; set; } = true;
     public int AutoSaveSeconds { get; set; } = 60;
+    /// <summary>Default visibility of a new video annotation in seconds.</summary>
+    public double VideoAnnotationSeconds { get; set; } = 4;
+    /// <summary>Drawing toolbar during screen recordings.</summary>
+    public bool LiveToolbar { get; set; } = true;
+    /// <summary>0.3 … 1 – the toolbar is excluded from the recording anyway.</summary>
+    public double LiveToolbarOpacity { get; set; } = 0.82;
+    /// <summary>Visible live tools: pen, marker, arrow, rect, ellipse, step, text, undo, clear.</summary>
+    public List<string> LiveTools { get; set; } = new() { "pen", "marker", "arrow", "rect", "ellipse", "step", "text", "undo", "clear" };
+    /// <summary>How long a live drawing stays visible (seconds); 0 = until "clear".</summary>
+    public double LiveAnnotationSeconds { get; set; } = 6;
 }
 
 /// <summary>Default look of new annotations (reusable design style).</summary>

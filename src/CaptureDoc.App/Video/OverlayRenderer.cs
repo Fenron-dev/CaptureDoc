@@ -84,6 +84,8 @@ public static class OverlayRenderer
         origin = (0, 0);
         var solo = new Page { Width = page.Width, Height = page.Height, Background = ColorRgba.Transparent, Layers = { ProjectJson.Clone(layer) } };
         solo.Layers[0].Timing = null;
+        // "multiply" highlights would be opaque on a transparent PNG → semi-transparent instead
+        if (solo.Layers[0] is HighlightLayer) solo.Layers[0].Opacity *= 0.45;
         using var full = session.Renderer.RenderPage(solo);
         // spotlights darken the whole frame → keep full size; others are cropped
         var b = layer is SpotlightLayer ? new RectD(0, 0, page.Width, page.Height) : layer.Bounds.Inflate(24);
@@ -95,6 +97,21 @@ public static class OverlayRenderer
         using var data = sub.Encode(SKEncodedImageFormat.Png, 100);
         return data.ToArray();
     }
+
+    /// <summary>Slide → coloured frame + timed overlay images (times relative to the slide start).</summary>
+    public static SlideSpec PrepareSlide(ProjectSession session, VideoSlide slide, string workDir) => new()
+    {
+        At = slide.At, Duration = Math.Max(0.1, slide.Duration),
+        Color = "0x" + slide.Page.Background.WithAlpha(255).ToHex()[1..7],
+        Overlay = Prepare(session, new VideoOverlay { Page = slide.Page }, workDir),
+    };
+
+    public static bool HasContent(VideoOverlay? o) =>
+        o is not null && (o.Page.Layers.Any(l => l is not ImageLayer { IsBackground: true }) || o.Zoom.Count > 0 || o.Slides.Count > 0);
+
+    /// <summary>Position of a layer at time t (movement keyframes), as offset from its stored position.</summary>
+    public static (double dx, double dy) OffsetAt(Layer l, double t) =>
+        l.Timing is { Keyframes.Count: > 0 } tm ? Interpolate(tm.Keyframes, t, l.Bounds) : (0, 0);
 
     /// <summary>Preview of all annotations visible at time t (transparent, page size).</summary>
     public static SKImage RenderPreview(ProjectSession session, VideoOverlay overlay, double t)

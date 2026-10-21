@@ -19,6 +19,15 @@ public static partial class WindowTools
     /// <summary>The window stays visible to the user but does not appear in screen captures/recordings.</summary>
     public static bool ExcludeFromCapture(nint hwnd) => hwnd != 0 && SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
 
+    /// <summary>Switches click-through on/off at runtime (live drawing layer: pointer mode vs. drawing mode).</summary>
+    public static void SetClickThrough(nint hwnd, bool on)
+    {
+        if (hwnd == 0) return;
+        var ex = (long)GetWindowLongPtr(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED | WS_EX_TOOLWINDOW;
+        ex = on ? ex | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE : ex & ~WS_EX_TRANSPARENT & ~WS_EX_NOACTIVATE;
+        SetWindowLongPtr(hwnd, GWL_EXSTYLE, (nint)ex);
+    }
+
     /// <summary>Mouse clicks pass through the window (for the recording frame).</summary>
     public static void MakeClickThrough(nint hwnd)
     {

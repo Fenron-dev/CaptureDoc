@@ -3,6 +3,10 @@ tags: [fortschritt]
 ---
 # Fortschritt
 
+## 2026-10-21 – 0.4.0: Video-Studio
+Nutzer-Feedback zu 0.3.1 umgesetzt: Seitenleiste nicht scrollbar (Ursache: `PropertiesPanel : ScrollViewer` ohne Control-Theme), Klickzeiten/Anzahl (Startverzögerung + Doppelklicks), Spuren sahen falsch aus (Vorschaubilder wurden über die Spuren gestreckt – neue Timeline), Annotieren direkt im Video, Layout nach Vorbild gängiger Recorder, Stift/Textmarker, Live-Zeichnen während der Aufnahme, Folien für Zusammenfassungen.
+**Getestet**: 150 automatisierte Tests ([[Test-Results]]), Layout per Headless-Rendering als Bild geprüft. **Nicht geprüft**: Bedienung am echten Bildschirm, Live-Zeichnen bei einer echten Aufnahme.
+
 ## 2026-10-21 – 0.3.0: Schnitte, Video-Schritte, Phase 7–10
 **Implementiert**
 - Schnitte im Video-Editor sichtbar und umkehrbar (Chips mit ✕, Entf), „Schnitte anwenden“ erzeugt gekürzte Fassung; verlustfreies Schneiden (Stream Copy).

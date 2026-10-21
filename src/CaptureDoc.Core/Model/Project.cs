@@ -160,6 +160,22 @@ public sealed class VideoOverlay
     /// <summary>Same layer model as the image editor; page size = video size.</summary>
     public Page Page { get; set; } = new();
     public List<ZoomKeyframe> Zoom { get; set; } = new();
+    /// <summary>Inserted still frames (title, summary, checklist …) – shown for their duration, video pauses.</summary>
+    public List<VideoSlide> Slides { get; set; } = new();
+}
+
+/// <summary>
+/// A slide inserted into a video at source time <see cref="At"/> (before that frame).
+/// Its page has a background colour and normal layers; layer timings are relative to the slide start
+/// (elements can appear one after another like in a presentation).
+/// </summary>
+public sealed class VideoSlide
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "Folie";
+    public double At { get; set; }
+    public double Duration { get; set; } = 5;
+    public Page Page { get; set; } = new();
 }
 
 /// <summary>Visible area of the video at a time (zoom/pan). Between keyframes the view is interpolated.</summary>

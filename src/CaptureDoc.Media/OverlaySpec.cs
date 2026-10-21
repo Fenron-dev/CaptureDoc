@@ -43,6 +43,16 @@ public sealed class RegionEffect
     public int Order { get; init; }
 }
 
+/// <summary>A still slide inserted at source time <see cref="At"/>: coloured frame + timed overlay images (times relative to the slide).</summary>
+public sealed class SlideSpec
+{
+    public double At { get; init; }
+    public double Duration { get; init; } = 5;
+    /// <summary>ffmpeg colour, e.g. 0x1E1E1E.</summary>
+    public string Color { get; init; } = "0x1E1E1E";
+    public OverlaySpec Overlay { get; init; } = new();
+}
+
 /// <summary>Visible part of the frame at a time (zoom/pan).</summary>
 public readonly record struct ZoomPoint(double Time, double X, double Y, double W, double H);
 

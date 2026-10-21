@@ -18,22 +18,33 @@ public sealed class SceneRenderer
     public AssetImageCache Assets => _assets;
 
     /// <summary>Renders the page at <paramref name="scale"/> into a new raster image.</summary>
-    public SKImage RenderPage(Page page, double scale = 1.0, Guid? hideLayer = null)
+    public SKImage RenderPage(Page page, double scale = 1.0, Guid? hideLayer = null, SKImage? underlay = null)
     {
         var w = Math.Max(1, (int)Math.Round(page.Width * scale));
         var h = Math.Max(1, (int)Math.Round(page.Height * scale));
         using var surface = SKSurface.Create(new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Premul))
                             ?? throw new InvalidOperationException($"Surface {w}×{h} konnte nicht erstellt werden (zu groß?).");
-        Render(surface, page, scale, hideLayer);
+        Render(surface, page, scale, hideLayer, underlay);
         return surface.Snapshot();
     }
 
+    /// <summary>
+    /// Optional picture below all layers (video frame in the video editor), stretched to the page size.
+    /// Effect layers (redaction, magnifier) then work on real pixels in the preview.
+    /// </summary>
+    private static void DrawUnderlay(SKCanvas c, Page page, SKImage? underlay)
+    {
+        if (underlay is null) return;
+        c.DrawImage(underlay, new SKRect(0, 0, underlay.Width, underlay.Height), new SKRect(0, 0, page.Width, page.Height), Smooth, null);
+    }
+
     /// <summary>Renders only the top-level layers <c>[0, count)</c> (used as a static cache while dragging).</summary>
-    public SKImage RenderBelow(Page page, int count)
+    public SKImage RenderBelow(Page page, int count, SKImage? underlay = null)
     {
         using var surface = SKSurface.Create(new SKImageInfo(Math.Max(1, page.Width), Math.Max(1, page.Height), SKColorType.Rgba8888, SKAlphaType.Premul))!;
         var c = surface.Canvas;
         c.Clear(page.Background.ToSk());
+        DrawUnderlay(c, page, underlay);
         for (var i = 0; i < Math.Min(count, page.Layers.Count); i++) DrawLayer(surface, c, page, page.Layers[i], 1.0, null, 1.0);
         return surface.Snapshot();
     }
@@ -47,12 +58,13 @@ public sealed class SceneRenderer
         for (var i = Math.Max(0, from); i < page.Layers.Count; i++) DrawLayer(surface, c, page, page.Layers[i], 1.0, hideLayer, 1.0);
     }
 
-    public void Render(SKSurface surface, Page page, double scale, Guid? hideLayer = null)
+    public void Render(SKSurface surface, Page page, double scale, Guid? hideLayer = null, SKImage? underlay = null)
     {
         var c = surface.Canvas;
         c.Clear(page.Background.ToSk());
         c.Save();
         c.Scale((float)scale);
+        DrawUnderlay(c, page, underlay);
         foreach (var l in page.Layers) DrawLayer(surface, c, page, l, scale, hideLayer, 1.0);
         c.Restore();
     }
@@ -201,7 +213,12 @@ public sealed class SceneRenderer
     private static void DrawFreehand(SKCanvas c, FreehandLayer fh, double op)
     {
         if (fh.Points.Count == 0) return;
-        using var p = new SKPaint { Color = fh.Stroke.ToSk(op), StrokeWidth = (float)fh.StrokeWidth, Style = SKPaintStyle.Stroke, IsAntialias = true, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round };
+        // highlighter: flat ends, colour alpha decides how much shines through (same look on video and screenshots)
+        using var p = new SKPaint
+        {
+            Color = fh.Stroke.ToSk(op), StrokeWidth = (float)fh.StrokeWidth, Style = SKPaintStyle.Stroke, IsAntialias = true,
+            StrokeCap = fh.Highlighter ? SKStrokeCap.Butt : SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round,
+        };
         if (fh.Points.Count == 1) { c.DrawPoint(fh.Points[0].ToSk(), p); return; }
         using var path = new SKPath();
         path.MoveTo(fh.Points[0].ToSk());

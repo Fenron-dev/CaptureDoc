@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -67,8 +68,7 @@ public sealed class RecordingController
             if (file is not null)
             {
                 Log.Info($"Recording saved {region.Width}x{region.Height}");
-                List<(double, int, int)> clicks; lock (session.Clicks) clicks = session.Clicks.ToList();
-                var ed = new VideoEditorWindow(_app, file, clicks: clicks);
+                var ed = new VideoEditorWindow(_app, file, clicks: session.MappedClicks, liveLayers: session.LiveLayers);
                 ed.Show();
                 ed.Activate();
             }
@@ -101,14 +101,25 @@ internal sealed class RecordingSessionUi
     private Button? _pause;
     private DispatcherTimer? _timer;
     private IDisposable? _hook;
-    /// <summary>Clicks inside the area: recording time (s) and position relative to the area.</summary>
+    private LiveDrawLayer? _live;
+    /// <summary>Clicks inside the area: recording clock (s) and position relative to the area.</summary>
     public List<(double T, int X, int Y)> Clicks { get; } = new();
+    /// <summary>After stop: clicks in video seconds (ffmpeg start delay removed).</summary>
+    public List<(double T, int X, int Y)> MappedClicks { get; private set; } = new();
+    /// <summary>After stop: live drawings as timed annotations (video seconds).</summary>
+    public List<Core.Model.Layer> LiveLayers { get; private set; } = new();
 
     public RecordingSessionUi(AppServices app, ScreenRecorder rec) { _app = app; _rec = rec; }
 
     public async Task<string?> RunAsync()
     {
         ShowFrame(_rec.EffectiveRegion);
+        // the drawing window must be excluded from the capture – only implemented for Windows so far
+        if (_app.Settings.Shared.LiveToolbar && OperatingSystem.IsWindows())
+        {
+            _live = new LiveDrawLayer(_app, _rec, _rec.EffectiveRegion);
+            _live.Show();
+        }
         ShowBar(_rec.EffectiveRegion);
         _rec.StateChanged += (_, _) => Dispatcher.UIThread.Post(UpdateUi);
         if (OperatingSystem.IsWindows() && _app.Settings.Platform.HighlightClicks)
@@ -117,7 +128,7 @@ internal sealed class RecordingSessionUi
             var area = _rec.EffectiveRegion;
             hook.Click += (x, y, _) =>
             {
-                if (_rec.State != RecorderState.Recording || !area.Contains(x, y)) return;
+                if (_rec.State != RecorderState.Recording || !area.Contains(x, y) || _live?.DrawingActive == true) return;
                 lock (Clicks) Clicks.Add((_rec.Elapsed.TotalSeconds, x - area.X, y - area.Y));
             };
             _hook = hook;
@@ -131,6 +142,7 @@ internal sealed class RecordingSessionUi
         {
             _hook?.Dispose();
             _timer.Stop();
+            _live?.Close();
             foreach (var w in _frame) w.Close();
             _bar?.Close();
         }
@@ -205,11 +217,14 @@ internal sealed class RecordingSessionUi
         }, "Pausieren / Fortsetzen – während der Pause wird nichts aufgenommen");
         var stop = Ui.Button("■ Stopp", async () => await FinishAsync(true, null), "Aufnahme beenden und im Video-Editor öffnen", accent: true);
         var cancel = Ui.Button("✕", async () => await FinishAsync(false, null), "Abbrechen und verwerfen");
+        var main = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _state, _time, _pause, stop, cancel } };
+        var content = new StackPanel { Spacing = 6, Margin = new Thickness(10, 6), Children = { main } };
+        if (_live is not null) content.Children.Add(BuildLiveTools());
         var bar = new Window
         {
             WindowDecorations = WindowDecorations.None, Topmost = true, ShowInTaskbar = false, CanResize = false, SizeToContent = SizeToContent.WidthAndHeight,
             Background = new SolidColorBrush(Color.FromArgb(235, 25, 25, 30)), WindowStartupLocation = WindowStartupLocation.Manual, Title = "CaptureDoc Aufnahme",
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(10, 6), Children = { _state, _time, _pause, stop, cancel } },
+            Content = content, Opacity = Math.Clamp(_app.Settings.Shared.LiveToolbarOpacity, 0.3, 1),
         };
         bar.Opened += (_, _) =>
         {
@@ -219,6 +234,50 @@ internal sealed class RecordingSessionUi
         };
         _bar = bar;
         bar.Show();
+    }
+
+    /// <summary>Live drawing tools (which ones: settings). Drawings are not part of the raw video but editable annotations.</summary>
+    private Control BuildLiveTools()
+    {
+        var live = _live!;
+        var enabled = _app.Settings.Shared.LiveTools.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var row = new WrapPanel { Orientation = Orientation.Horizontal };
+        var group = new List<(ToggleButton Button, CaptureDoc.App.Editor.Tool? Tool)>();
+        void ToolBtn(string id, string glyph, string tip, CaptureDoc.App.Editor.Tool? tool)
+        {
+            if (id != "pointer" && !enabled.Contains(id)) return;
+            var b = new ToggleButton { Content = glyph, MinWidth = 34, Padding = new Thickness(6, 2), Margin = new Thickness(1), FontSize = 15 };
+            ToolTip.SetTip(b, tip);
+            b.Click += (_, _) => { live.SetTool(tool); foreach (var (bb, tt) in group) bb.IsChecked = tt == tool; };
+            group.Add((b, tool));
+            row.Children.Add(b);
+        }
+        ToolBtn("pointer", "🖱", "Zeiger – das aufgenommene Programm normal bedienen (Zeichnen aus)", null);
+        ToolBtn("pen", "✎", "Stift", CaptureDoc.App.Editor.Tool.Freehand);
+        ToolBtn("marker", "🖍", "Textmarker", CaptureDoc.App.Editor.Tool.Marker);
+        ToolBtn("arrow", "➜", "Pfeil", CaptureDoc.App.Editor.Tool.Arrow);
+        ToolBtn("rect", "▭", "Rahmen", CaptureDoc.App.Editor.Tool.Rectangle);
+        ToolBtn("ellipse", "◯", "Kreis", CaptureDoc.App.Editor.Tool.Ellipse);
+        ToolBtn("step", "①", "Nummer", CaptureDoc.App.Editor.Tool.Step);
+        ToolBtn("text", "T", "Text", CaptureDoc.App.Editor.Tool.Text);
+        group[0].Button.IsChecked = true;
+        row.Children.Add(new Border { Width = 8 });
+        foreach (var c in new[] { Core.Model.ColorRgba.Red, Core.Model.ColorRgba.Yellow, new Core.Model.ColorRgba(40, 170, 70), Core.Model.ColorRgba.Blue, Core.Model.ColorRgba.White })
+        {
+            var cc = c;
+            var b = new Button { Width = 20, Height = 20, Margin = new Thickness(1), Padding = new Thickness(0), Background = new SolidColorBrush(Color.FromRgb(c.R, c.G, c.B)), BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(b, "Farbe");
+            b.Click += (_, _) => live.SetColor(cc);
+            row.Children.Add(b);
+        }
+        var width = new TextBlock { Text = $"{live.StrokeWidth:0}", Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0), MinWidth = 16 };
+        row.Children.Add(new Border { Width = 6 });
+        row.Children.Add(Ui.Button("−", () => { live.StrokeWidth -= 1; width.Text = $"{live.StrokeWidth:0}"; }, "Dünner"));
+        row.Children.Add(width);
+        row.Children.Add(Ui.Button("+", () => { live.StrokeWidth += 1; width.Text = $"{live.StrokeWidth:0}"; }, "Dicker"));
+        if (enabled.Contains("undo")) row.Children.Add(Ui.Button("↶", live.Undo, "Letzte Zeichnung rückgängig"));
+        if (enabled.Contains("clear")) row.Children.Add(Ui.Button("🧹", live.Clear, "Alle sichtbaren Zeichnungen ausblenden (ab jetzt)"));
+        return row;
     }
 
     private static void PlaceBar(Window bar, Core.Model.PixelRect r)
@@ -251,6 +310,10 @@ internal sealed class RecordingSessionUi
             var file = Path.Combine(dir, FileNamePattern.Format("Aufnahme_{yyyy-MM-dd_HH-mm-ss}", DateTime.Now) + ".mkv");
             var result = await _rec.StopAsync(file);
             _rec.Cleanup();
+            double duration = 0;
+            try { duration = (await MediaProbe.ProbeAsync(_app.Ffmpeg!, result)).Duration; } catch (InvalidDataException) { }
+            lock (Clicks) MappedClicks = Clicks.Select(c => (_rec.MapToVideoTime(c.T), c.X, c.Y)).ToList();
+            if (_live is not null) LiveLayers = _live.TakeLayers(_rec.MapToVideoTime, duration);
             if (error is not null) await Dialogs.InfoAsync(null, "Aufnahme unterbrochen", error + "\n\nDas bis dahin Aufgenommene wurde gespeichert.");
             _done.TrySetResult(result);
         }

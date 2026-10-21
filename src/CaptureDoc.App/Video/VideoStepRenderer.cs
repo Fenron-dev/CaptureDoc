@@ -43,11 +43,11 @@ public static class VideoStepRenderer
             var src = Resolve(app, session, v) ?? throw new InvalidOperationException($"Video für Schritt „{s.Title}“ nicht gefunden: {v.Path}");
             var ext = v.Format == VideoOutputFormat.Gif ? ".gif" : ".mp4";
             var output = Path.Combine(workDir, $"step-{i:00}{ext}");
-            var clip = ToClip(v);
-            var overlay = v.Overlay is { } ov && ov.Page.Layers.Count > 0
-                ? await OverlayRenderer.PrepareAsync(session, ov, Path.Combine(workDir, $"overlay-{i:00}"))
-                : null;
             progress?.Report($"Video {i}/{steps.Count}: {s.Title} …");
+            var plan = await VideoRenderPlan.PrepareAsync(app, session, src, ToClip(v), v.Overlay, Path.Combine(workDir, $"prep-{i:00}"), progress, ct);
+            src = plan.Source;
+            var clip = plan.Clip;
+            var overlay = plan.Overlay;
             VideoExportResult r;
             if (v.Format == VideoOutputFormat.Gif)
                 r = await exporter.ExportGifAsync(src, output, clip, new GifSettings

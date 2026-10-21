@@ -27,7 +27,7 @@ public sealed class EditorWindow : Window
     private readonly TextBlock _status = Ui.Label("", 12, opacity: 0.8);
     private readonly Dictionary<Tool, ToggleButton> _toolButtons = new();
     private readonly DispatcherTimer _autosave;
-    private TextBox? _textEditor;
+    private readonly InlineTextEditor _text;
     private static List<(Layer layer, Dictionary<string, byte[]> assets)>? _layerClipboard;
     private readonly bool _isStudioPage;
 
@@ -42,6 +42,7 @@ public sealed class EditorWindow : Window
         Icon = IconFactory.WindowIcon;
 
         _canvas = new EditorCanvas(session, page, app.Settings.Shared.Style);
+        _text = new InlineTextEditor(_canvas, _overlay);
         var host = new Panel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(24) };
         host.Children.Add(_canvas);
         host.Children.Add(_overlay);
@@ -132,6 +133,7 @@ public sealed class EditorWindow : Window
         ToolBtn(Tool.Spotlight, "◎", "S");
         ToolBtn(Tool.Magnifier, "🔍", "M");
         ToolBtn(Tool.Freehand, "✎", "F");
+        ToolBtn(Tool.Marker, "🖍", "G");
         bar.Children.Add(new Separator { Width = 10 });
         ToolBtn(Tool.Blackout, "■", "B");
         ToolBtn(Tool.Pixelate, "▦", "P");
@@ -224,21 +226,7 @@ public sealed class EditorWindow : Window
         _canvas.Style.Color = c;
         var sel = _canvas.SelectedLayers.ToList();
         if (sel.Count == 0) return;
-        _canvas.Apply("Farbe", () =>
-        {
-            foreach (var l in sel)
-                switch (l)
-                {
-                    case ShapeLayer s: s.Stroke = c; break;
-                    case LineLayer ln: ln.Stroke = c; break;
-                    case StepLayer st: st.Fill = c; break;
-                    case TextLayer t when t.Style == TextStyle.Plain: t.Foreground = c; break;
-                    case TextLayer t: t.Border = c; break;
-                    case FreehandLayer f: f.Stroke = c; break;
-                    case HighlightLayer h: h.Color = c; break;
-                    case MagnifierLayer m: m.Border = c; break;
-                }
-        });
+        _canvas.Apply("Farbe", () => { foreach (var l in sel) EditorCanvas.SetMainColor(l, c); });
     }
 
     private void FitZoom(bool onlyShrink)
@@ -261,7 +249,7 @@ public sealed class EditorWindow : Window
 
     private async void OnKey(object? sender, KeyEventArgs e)
     {
-        if (_textEditor is not null && _textEditor.IsFocused)
+        if (_text.IsFocused)
         {
             if (e.Key == Key.Escape || (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Control))) { CommitTextEdit(); e.Handled = true; }
             return;
@@ -318,6 +306,7 @@ public sealed class EditorWindow : Window
             case Key.S when !ctrl: SetTool(Tool.Spotlight); break;
             case Key.M: SetTool(Tool.Magnifier); break;
             case Key.F: SetTool(Tool.Freehand); break;
+            case Key.G when !ctrl: SetTool(Tool.Marker); break;
             case Key.B: SetTool(Tool.Blackout); break;
             case Key.P: SetTool(Tool.Pixelate); break;
             case Key.W: SetTool(Tool.Blur); break;
@@ -331,49 +320,9 @@ public sealed class EditorWindow : Window
 
     // ---------------------------------------------------------------- inline text editing
 
-    private void BeginTextEdit(TextLayer t)
-    {
-        CommitTextEdit();
-        _canvas.Select(new[] { t.Id });
-        _canvas.EditingTextLayer = t.Id;
-        _canvas.NotifyDocumentChanged();
-        var r = _canvas.ToView(t.Rect.Normalize());
-        var s = _canvas.ViewScale;
-        var tb = new TextBox
-        {
-            Text = t.Text, AcceptsReturn = true, TextWrapping = t.Style == TextStyle.Plain ? TextWrapping.NoWrap : TextWrapping.Wrap,
-            FontSize = Math.Max(8, t.FontSize * s), FontFamily = new FontFamily(t.FontFamily),
-            FontWeight = t.Bold ? FontWeight.Bold : FontWeight.Normal, FontStyle = t.Italic ? FontStyle.Italic : FontStyle.Normal,
-            Foreground = new SolidColorBrush(t.Foreground.ToAvalonia()),
-            Background = new SolidColorBrush(t.Background.IsTransparent ? Color.FromArgb(200, 255, 255, 255) : t.Background.ToAvalonia()),
-            MinWidth = Math.Max(80, r.Width), MinHeight = Math.Max(24, r.Height), Padding = new Thickness(t.Padding * s),
-        };
-        Canvas.SetLeft(tb, r.X); Canvas.SetTop(tb, r.Y);
-        _overlay.Children.Add(tb);
-        _textEditor = tb;
-        _canvas.History.BeginTransaction("Text bearbeiten");
-        tb.TextChanged += (_, _) => { t.Text = tb.Text ?? ""; };
-        tb.LostFocus += (_, _) => CommitTextEdit();
-        // focus after the canvas finished its pointer handling
-        Dispatcher.UIThread.Post(() => { tb.Focus(); tb.SelectAll(); }, DispatcherPriority.Loaded);
-    }
+    private void BeginTextEdit(TextLayer t) => _text.Begin(t);
 
-    private void CommitTextEdit()
-    {
-        if (_textEditor is null) return;
-        var tb = _textEditor; _textEditor = null;
-        _overlay.Children.Remove(tb);
-        if (_canvas.EditingTextLayer is { } id && _canvas.Page.Find(id) is TextLayer t)
-        {
-            if (t.Style == TextStyle.Plain) t.Rect = t.Rect.Normalize() with { Width = 0 }; // plain text: auto width, no wrapping
-            var fit = TextLayout.FitBox(t);
-            t.Rect = t.Style == TextStyle.Plain ? fit : t.Rect.Normalize() with { Height = Math.Max(fit.Height, t.Rect.Normalize().Height) };
-        }
-        _canvas.EditingTextLayer = null;
-        _canvas.History.Commit();
-        _canvas.NotifyDocumentChanged();
-        _canvas.Focus();
-    }
+    private void CommitTextEdit() => _text.Commit();
 
     // ---------------------------------------------------------------- output
 

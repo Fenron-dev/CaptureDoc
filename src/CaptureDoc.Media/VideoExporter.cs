@@ -328,6 +328,97 @@ public sealed class VideoExporter
         return output;
     }
 
+    // ------------------------------------------------------------------ slides
+
+    /// <summary>Output time (after trim and cuts) of a source time.</summary>
+    public static double OutputTime(ClipRange c, double sourceTime)
+    {
+        var t = Math.Clamp(sourceTime, c.Start, c.End);
+        return KeptSegments(c).Sum(s => Math.Max(0, Math.Min(s.To, t) - s.From));
+    }
+
+    /// <summary>
+    /// Builds one working file (H.264 4:4:4, MKV): the edited video (trim, cuts, overlays, zoom) with the slides
+    /// inserted at their positions. Each slide is a coloured frame with its own timed overlay images.
+    /// The result is then exported like a normal source.
+    /// </summary>
+    public async Task<string> ComposeAsync(string src, string output, ClipRange clip, OverlaySpec? overlay, IReadOnlyList<SlideSpec> slides,
+        IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        var work = output + ".parts";
+        Directory.CreateDirectory(work);
+        try
+        {
+            var main = Path.Combine(work, "main.mkv");
+            await RenderEditedAsync(src, main, clip, progress, ct, overlay);
+            var mi = await MediaProbe.ProbeAsync(_t, main, ct);
+            var fps = mi.Fps > 0 ? mi.Fps : 30;
+            var audio = mi.HasAudio;
+            var ordered = slides.Where(s => s.Duration > 0.05).Select(s => (Slide: s, At: Math.Min(mi.Duration, OutputTime(clip, s.At)))).OrderBy(x => x.At).ToList();
+
+            var segs = new List<string>();
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                var s = ordered[i].Slide;
+                progress?.Report($"Folie {i + 1}/{ordered.Count} …");
+                var seg = Path.Combine(work, $"slide-{i:00}.mkv");
+                var a = new List<string> { "-hide_banner", "-y", "-f", "lavfi", "-i", $"color=c={s.Color}:s={mi.Width}x{mi.Height}:r={F(fps)}:d={F(s.Duration)}" };
+                a.AddRange(s.Overlay.InputArgs());
+                var audioInput = 1 + s.Overlay.Images.Count;
+                if (audio) a.AddRange(new[] { "-f", "lavfi", "-t", F(s.Duration), "-i", "anullsrc=r=48000:cl=stereo" });
+                a.AddRange(new[] { "-filter_complex", s.Overlay.BuildFilter("[0:v]", mi.Width, mi.Height, fps, 0) + ";[ov]format=yuv444p[vout]", "-map", "[vout]" });
+                if (audio) a.AddRange(new[] { "-map", $"{audioInput}:a", "-c:a", "aac", "-b:a", "160k" });
+                a.AddRange(new[] { "-t", F(s.Duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv444p", seg });
+                var r = await RunAsync(_t.Ffmpeg, a, ct);
+                if (!r.Success) throw new InvalidOperationException("Folie konnte nicht erzeugt werden: " + r.StdErrTail);
+                segs.Add(seg);
+            }
+
+            // main pieces between the insertion points, slides in between → concat
+            var cuts = new List<double> { 0 };
+            cuts.AddRange(ordered.Select(o => o.At));
+            cuts.Add(mi.Duration);
+            var pieces = new List<(double A, double B)>();
+            for (var i = 0; i < cuts.Count - 1; i++) pieces.Add((cuts[i], cuts[i + 1]));
+
+            var args = new List<string> { "-hide_banner", "-y", "-i", main };
+            foreach (var seg in segs) { args.Add("-i"); args.Add(seg); }
+            var fc = new System.Text.StringBuilder();
+            fc.Append($"[0:v]split={pieces.Count}" + string.Concat(Enumerable.Range(0, pieces.Count).Select(k => $"[mv{k}]")) + ";");
+            if (audio) fc.Append($"[0:a]asplit={pieces.Count}" + string.Concat(Enumerable.Range(0, pieces.Count).Select(k => $"[ma{k}]")) + ";");
+            const string vnorm = "setsar=1,format=yuv444p";
+            const string anorm = "aresample=48000,aformat=channel_layouts=stereo";
+            var seq = new List<string>();
+            for (var k = 0; k < pieces.Count; k++)
+            {
+                var (pa, pb) = pieces[k];
+                var empty = pb - pa < 0.02;
+                fc.Append($"[mv{k}]trim=start={F(pa)}:end={F(Math.Max(pb, pa + 0.001))},setpts=PTS-STARTPTS,fps={F(fps)},{vnorm}[v{k}];");
+                if (audio) fc.Append($"[ma{k}]atrim=start={F(pa)}:end={F(Math.Max(pb, pa + 0.001))},asetpts=PTS-STARTPTS,{anorm}[a{k}];");
+                if (empty) { fc.Append($"[v{k}]nullsink;"); if (audio) fc.Append($"[a{k}]anullsink;"); }
+                else seq.Add(audio ? $"[v{k}][a{k}]" : $"[v{k}]");
+                if (k < segs.Count)
+                {
+                    fc.Append($"[{k + 1}:v]fps={F(fps)},{vnorm}[s{k}];");
+                    if (audio) fc.Append($"[{k + 1}:a]{anorm}[sa{k}];");
+                    seq.Add(audio ? $"[s{k}][sa{k}]" : $"[s{k}]");
+                }
+            }
+            fc.Append(string.Concat(seq) + $"concat=n={seq.Count}:v=1:a={(audio ? 1 : 0)}[cv]" + (audio ? "[ca]" : ""));
+            args.AddRange(new[] { "-filter_complex", fc.ToString(), "-map", "[cv]" });
+            if (audio) args.AddRange(new[] { "-map", "[ca]", "-c:a", "aac", "-b:a", "160k" });
+            args.AddRange(new[] { "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv444p", output });
+            var total = mi.Duration + ordered.Sum(o => o.Slide.Duration);
+            var c = await RunAsync(_t.Ffmpeg, args, ct, t => progress?.Report($"Füge Folien ein … {Math.Min(100, t / Math.Max(0.1, total) * 100):0} %"));
+            if (!c.Success) throw new InvalidOperationException("Folien konnten nicht eingefügt werden: " + c.StdErrTail);
+            return output;
+        }
+        finally
+        {
+            try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
     // ------------------------------------------------------------------ frames
 
     public async Task<byte[]> ExtractFrameAsync(string src, double seconds, CancellationToken ct = default)

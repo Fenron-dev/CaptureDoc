@@ -175,6 +175,55 @@ public class OverlayIntegrationTests
     }
 
     [Fact]
+    public async Task Slides_are_inserted_with_their_own_timed_elements()
+    {
+        if (Tools is not { } t) return;
+        using var d = new TempDir();
+        var src = await GreyClipAsync(t, d.Path);                 // 6 s grey, no audio
+        var png = await RedPngAsync(t, d.Path);
+        var slideOverlay = new OverlaySpec();
+        slideOverlay.Images.Add(new ImageOverlay { PngPath = png, X = 100, Y = 100, Start = 1 });   // appears 1 s into the slide
+        var slides = new List<SlideSpec> { new() { At = 3, Duration = 2, Color = "0x0000FF", Overlay = slideOverlay } };
+        var clip = new ClipRange { Start = 1, End = 6, Cuts = { (4.5, 5) } };   // kept 1..4.5 + 5..6 = 4.5 s; slide at source 3 → output 2
+        Assert.Equal(2, VideoExporter.OutputTime(clip, 3), 3);
+        var outFile = d.File("composed.mkv");
+        await new VideoExporter(t).ComposeAsync(src, outFile, clip, null, slides);
+        var info = await MediaProbe.ProbeAsync(t, outFile);
+        Assert.InRange(info.Duration, 6.2, 6.8);                // 4.5 + 2
+        var before = await PixelAsync(t, outFile, 1.0, 20, 20);
+        Assert.InRange(before.r, 100, 160);                       // grey video
+        var slide = await PixelAsync(t, outFile, 2.5, 20, 20);
+        Assert.True(slide.b > 180 && slide.r < 60, $"slide colour {slide}");
+        var notYet = await PixelAsync(t, outFile, 2.5, 120, 120);
+        Assert.True(notYet.b > 180, $"element not yet visible {notYet}");
+        var shown = await PixelAsync(t, outFile, 3.5, 120, 120);
+        Assert.True(shown.r > 180 && shown.b < 80, $"element visible after 1 s {shown}");
+        var after = await PixelAsync(t, outFile, 5.0, 20, 20);
+        Assert.InRange(after.r, 100, 160);                        // back to the video
+    }
+
+    [Fact]
+    public async Task Slides_keep_the_audio_track_in_sync()
+    {
+        if (Tools is not { } t) return;
+        using var d = new TempDir();
+        var src = d.File("tone.mkv");
+        var mk = await FfmpegRunner.RunAsync(t.Ffmpeg, new[] { "-hide_banner", "-y", "-f", "lavfi", "-i", "color=c=0x808080:s=320x240:r=10:d=4", "-f", "lavfi", "-i", "sine=f=440:r=44100:d=4",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv444p", "-c:a", "aac", "-shortest", src });
+        Assert.True(mk.Success, mk.StdErrTail);
+        var outFile = d.File("composed-audio.mkv");
+        await new VideoExporter(t).ComposeAsync(src, outFile, new ClipRange { Start = 0, End = 4 }, null,
+            new List<SlideSpec> { new() { At = 0, Duration = 1.5 }, new() { At = 4, Duration = 1 } });   // title slide at the start, one at the end
+        var info = await MediaProbe.ProbeAsync(t, outFile);
+        Assert.True(info.HasAudio);
+        Assert.InRange(info.Duration, 6.2, 6.8);
+        var title = await PixelAsync(t, outFile, 0.5, 20, 20);
+        Assert.True(title.r < 50, $"dark title slide {title}");
+        var mid = await PixelAsync(t, outFile, 3.0, 20, 20);
+        Assert.InRange(mid.r, 100, 160);
+    }
+
+    [Fact]
     public async Task Pixelate_and_magnify_effects_render()
     {
         if (Tools is not { } t) return;

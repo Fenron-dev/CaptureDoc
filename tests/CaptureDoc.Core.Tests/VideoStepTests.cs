@@ -7,6 +7,36 @@ namespace CaptureDoc.Core.Tests;
 
 public class VideoStepTests
 {
+    [Fact]
+    public void Slides_and_marker_strokes_round_trip_and_keep_their_images()
+    {
+        using var t = new TempDir();
+        var project = new CaptureProject { Title = "Video" };
+        var assets = new AssetStore();
+        var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 1, 2, 3 };
+        var id = assets.Add(png);
+        project.Assets[id] = new AssetInfo { Id = id, FileName = id + ".png", Width = 1, Height = 1, Length = png.Length };
+        var slide = new VideoSlide { Name = "Zusammenfassung", At = 3, Duration = 6, Page = new Page { Width = 320, Height = 240, Background = new ColorRgba(0, 0, 200) } };
+        slide.Page.Layers.Add(new ImageLayer { AssetId = id, Rect = new RectD(10, 10, 50, 50), Timing = new LayerTiming { StartSeconds = 1, EndSeconds = 6 } });
+        var overlay = new VideoOverlay { Page = new Page { Width = 320, Height = 240 }, Slides = { slide } };
+        overlay.Page.Layers.Add(new FreehandLayer { Highlighter = true, Stroke = ColorRgba.Yellow.WithAlpha(110), StrokeWidth = 16, Points = { new PointD(0, 0), new PointD(10, 10) } });
+        project.Guide.Steps.Add(new GuideStep { Title = "V", Video = new VideoRef { Path = "clip.mkv", End = 10, Overlay = overlay } });
+        Assert.Contains(id, ProjectFile.CollectUsedAssets(project));      // image only used on a slide is not dropped
+        var file = t.File("v.capturedoc");
+        ProjectFile.Save(file, project, assets);
+        var loaded = ProjectFile.Load(file);
+        var ov = loaded.Project.Guide.Steps[0].Video!.Overlay!;
+        var sl = Assert.Single(ov.Slides);
+        Assert.Equal(("Zusammenfassung", 3.0, 6.0), (sl.Name, sl.At, sl.Duration));
+        Assert.Equal(new ColorRgba(0, 0, 200), sl.Page.Background);
+        Assert.Equal(1, sl.Page.Layers[0].Timing!.StartSeconds);
+        Assert.True(loaded.Assets.Contains(id));
+        var marker = Assert.IsType<FreehandLayer>(ov.Page.Layers[0]);
+        Assert.True(marker.Highlighter);
+        Assert.Equal(110, marker.Stroke.A);
+        Assert.Equal("Textmarker", marker.Kind);
+    }
+
     private static (Guide g, string vault, string video) Setup(TempDir t)
     {
         var vault = Path.Combine(t.Path, "Vault");

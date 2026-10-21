@@ -178,10 +178,12 @@ public sealed class StepLayer : Layer
 
 public sealed class FreehandLayer : Layer
 {
-    public override string Kind => "Freihand";
+    public override string Kind => Highlighter ? "Textmarker" : "Freihand";
     public List<PointD> Points { get; set; } = new();
     public ColorRgba Stroke { get; set; } = ColorRgba.Red;
     public double StrokeWidth { get; set; } = 4;
+    /// <summary>Highlighter pen: wide, semi-transparent stroke (the colour's alpha is used).</summary>
+    public bool Highlighter { get; set; }
 
     public override RectD Bounds
     {

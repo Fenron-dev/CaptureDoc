@@ -32,6 +32,7 @@ public sealed class VideoExportDialog : Window
     private readonly TextBlock _status = Ui.Label("", 12);
     private readonly Button _go;
     private CancellationTokenSource? _cts;
+    private readonly string _name;
 
     private static NumericUpDown Num(decimal min, decimal max, decimal inc = 1) => new() { Minimum = min, Maximum = max, Increment = inc, FormatString = inc < 1 ? "0.0" : "0", Width = 130 };
 
@@ -54,9 +55,10 @@ public sealed class VideoExportDialog : Window
         new("Benutzerdefiniert", null, 0, 0, null, SizeLimitKind.None),
     };
 
-    public VideoExportDialog(AppServices app, VideoExporter exporter, string src, MediaInfo info, ClipRange clip, bool gif, OverlaySpec? overlay = null)
+    public VideoExportDialog(AppServices app, VideoExporter exporter, string src, MediaInfo info, ClipRange clip, bool gif, OverlaySpec? overlay = null, string? suggestedName = null)
     {
         _app = app; _exporter = exporter; _src = src; _info = info; _clip = clip; _gif = gif; _overlay = overlay;
+        _name = suggestedName ?? Path.GetFileNameWithoutExtension(src);
         Title = gif ? "GIF exportieren" : "MP4 exportieren";
         Width = 600; SizeToContent = SizeToContent.Height; CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -116,7 +118,7 @@ public sealed class VideoExportDialog : Window
     {
         var ext = _gif ? ".gif" : ".mp4";
         var dir = _app.Settings.Platform.LastSaveDirectory ?? _app.Env.MediaDir;
-        var path = await Dialogs.SaveFileAsync(this, Title ?? "Export", Path.GetFileNameWithoutExtension(_src) + ext, dir, (_gif ? "GIF" : "MP4-Video", "*" + ext));
+        var path = await Dialogs.SaveFileAsync(this, Title ?? "Export", _name + ext, dir, (_gif ? "GIF" : "MP4-Video", "*" + ext));
         if (path is null) return;
         _go.IsEnabled = false;
         _cts = new CancellationTokenSource();

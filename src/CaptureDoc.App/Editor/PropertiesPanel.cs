@@ -18,6 +18,12 @@ public sealed class PropertiesPanel : ScrollViewer
     private bool _building;
     private bool _selfEdit;
 
+    // a subclass gets no control theme of its own → without this there is no template and nothing scrolls
+    protected override Type StyleKeyOverride => typeof(ScrollViewer);
+
+    /// <summary>Page size/canvas options (image editor only; video pages keep the video size).</summary>
+    public bool ShowPageSection { get; set; } = true;
+
     public PropertiesPanel(EditorCanvas canvas)
     {
         _canvas = canvas;
@@ -48,14 +54,14 @@ public sealed class PropertiesPanel : ScrollViewer
             if (sel.Count == 0)
             {
                 _stack.Children.Add(Ui.Label("Keine Ebene ausgewählt. Werkzeug wählen und im Bild ziehen, oder eine Ebene anklicken.", 12, opacity: 0.7));
-                PageSection();
+                if (ShowPageSection) PageSection();
                 return;
             }
             if (sel.Count > 1)
             {
                 _stack.Children.Add(Ui.Label($"{sel.Count} Ebenen ausgewählt", 12));
                 ColorRow("Farbe", sel[0] switch { ShapeLayer s => s.Stroke, LineLayer l => l.Stroke, StepLayer st => st.Fill, TextLayer t => t.Foreground, _ => ColorRgba.Red },
-                    c => Edit<Layer>("Farbe", "color", l => SetMainColor(l, c)));
+                    c => Edit<Layer>("Farbe", "color", l => EditorCanvas.SetMainColor(l, c)));
                 return;
             }
             var layer = sel[0];
@@ -148,8 +154,16 @@ public sealed class PropertiesPanel : ScrollViewer
                     BoxGeometry(mg);
                     break;
                 case FreehandLayer fh:
-                    ColorRow("Farbe", fh.Stroke, c => Edit<FreehandLayer>("Farbe", "c", x => x.Stroke = c));
-                    Number("Linienstärke", fh.StrokeWidth, 1, 60, v => Edit<FreehandLayer>("Linienstärke", "sw", x => x.StrokeWidth = v));
+                    ColorRow("Farbe", fh.Stroke, c => Edit<FreehandLayer>("Farbe", "c", x => x.Stroke = x.Highlighter && c.A == 255 ? c.WithAlpha(x.Stroke.A) : c));
+                    Number("Linienstärke", fh.StrokeWidth, 1, 120, v => Edit<FreehandLayer>("Linienstärke", "sw", x => x.StrokeWidth = v));
+                    Check("Textmarker (halbtransparent)", fh.Highlighter, v => Edit<FreehandLayer>("Textmarker", "hl", x =>
+                    {
+                        x.Highlighter = v;
+                        x.Stroke = x.Stroke.WithAlpha(v ? (byte)110 : (byte)255);
+                        if (v && x.StrokeWidth < 12) x.StrokeWidth = 16;
+                    }));
+                    if (fh.Highlighter)
+                        Number("Deckung %", Math.Round(fh.Stroke.A / 2.55), 5, 100, v => Edit<FreehandLayer>("Deckung", "hla", x => x.Stroke = x.Stroke.WithAlpha((byte)Math.Clamp(v * 2.55, 10, 255))));
                     break;
                 case ImageLayer im:
                     _stack.Children.Add(Ui.Label(im.IsBackground ? "Originalaufnahme (nichtdestruktiv, wird nie verändert)." : "Bildebene", 12, opacity: 0.75));
@@ -194,19 +208,6 @@ public sealed class PropertiesPanel : ScrollViewer
         var fit = TextLayout.FitBox(t);
         var r = t.Rect.Normalize();
         t.Rect = t.Style == TextStyle.Plain ? fit : new RectD(r.X, r.Y, r.Width > 0 ? r.Width : fit.Width, Math.Max(fit.Height, Math.Min(r.Height, fit.Height + 400)));
-    }
-
-    private static void SetMainColor(Layer l, ColorRgba c)
-    {
-        switch (l)
-        {
-            case ShapeLayer s: s.Stroke = c; break;
-            case LineLayer ln: ln.Stroke = c; break;
-            case StepLayer st: st.Fill = c; break;
-            case TextLayer t: if (t.Style == TextStyle.Plain) t.Foreground = c; else t.Border = c; break;
-            case FreehandLayer f: f.Stroke = c; break;
-            case HighlightLayer h: h.Color = c; break;
-        }
     }
 
     private void BoxGeometry(BoxLayer b)

@@ -11,5 +11,7 @@ Behobene Fehler mit Ursache und Lösung: [[Changelog]]. Offene Punkte: [[Open-Is
 - **Weichzeichnen** ist bei geringer Stärke keine sichere Schwärzung (Hinweis in der UI).
 - **macOS/Linux** (seit 0.3.0 im Paket): nie auf echter Hardware gestartet. Fensterliste und globale Tastenkürzel fehlen (Startbefehle `--capture …` über System-Kürzel nutzen), Video unter Wayland meldet „nicht unterstützt“ ([[ADR-007 macOS und Linux]]).
 - **Videos in Projekten** werden referenziert, nicht eingebettet: beim Weitergeben eines Projekts das Video (relativer Pfad) mitkopieren, sonst zeigt der Schritt „Video fehlt“.
-- **Klick-Markierungen** erscheinen etwas früher als der Klick im Video (FFmpeg-Startverzögerung) – im Editor verschiebbar.
+- **Klick-Markierungen**: Startverzögerung wird seit 0.4.0 pro Segment herausgerechnet; Rest-Ungenauigkeit etwa ein Bild.
+- **Live-Zeichnungen** sind nicht im Rohvideo, sondern erscheinen erst im Editor/Export – das ist Absicht (bearbeitbar).
+- **Textmarker im Video** werden halbtransparent überlagert, nicht „multipliziert“ wie ein echter Marker; dunkle Schrift wird dadurch leicht eingefärbt.
 - **„Schnitte anwenden“ mit Annotationen** brennt die Annotationen ein (Rückfrage); verlustfreies Schneiden ist nur ohne Annotationen/Zoom möglich und schneidet an Keyframes (± bis zu 1 s ungenau).

@@ -17,7 +17,7 @@ namespace CaptureDoc.App.Editor;
 public enum Tool
 {
     Select, Arrow, Line, Rectangle, Ellipse, Text, InfoBox, Bubble, Step,
-    Highlight, Blackout, Pixelate, Blur, Spotlight, Magnifier, Freehand, Crop, Pipette,
+    Highlight, Blackout, Pixelate, Blur, Spotlight, Magnifier, Freehand, Crop, Pipette, Marker,
 }
 
 /// <summary>
@@ -43,11 +43,12 @@ public sealed class EditorCanvas : Control
     {
         EndDragCache();
         var ids = Selection.ToHashSet();
+        var view = ViewPage();
         var idx = -1;
-        for (var i = 0; i < Page.Layers.Count; i++)
-            if (ids.Contains(Page.Layers[i].Id) || (Page.Layers[i] is GroupLayer g && g.AllChildren().Any(c => ids.Contains(c.Id)))) { idx = i; break; }
+        for (var i = 0; i < view.Layers.Count; i++)
+            if (ids.Contains(view.Layers[i].Id) || (view.Layers[i] is GroupLayer g && g.AllChildren().Any(c => ids.Contains(c.Id)))) { idx = i; break; }
         if (idx <= 0 || (long)Page.Width * Page.Height < 1_000_000) return; // small images are fast anyway
-        _dragCache = Session.Renderer.RenderBelow(Page, idx);
+        _dragCache = Session.Renderer.RenderBelow(view, idx, Underlay);
         _dragCacheFrom = idx;
     }
 
@@ -59,6 +60,41 @@ public sealed class EditorCanvas : Control
     }
 
     private enum DragState { None, Move, Resize, Create, Crop }
+
+    /// <summary>
+    /// Only layers passing the filter are drawn and can be clicked (video editor: layers visible at the playhead).
+    /// The page itself is not changed.
+    /// </summary>
+    public Func<Layer, bool>? LayerFilter
+    {
+        get => _filter;
+        set { _filter = value; InvalidateRender(); }
+    }
+    private Func<Layer, bool>? _filter;
+
+    /// <summary>Picture drawn below all layers (current video frame); not part of the page.</summary>
+    public SKImage? Underlay
+    {
+        get => _underlay;
+        set { _underlay = value; InvalidateRender(); }
+    }
+    private SKImage? _underlay;
+
+    /// <summary>Display-only replacement of the (filtered) page, e.g. moving annotations during playback. Not used for hit tests.</summary>
+    public Func<Page, Page>? DisplayOverride { get; set; }
+
+    /// <summary>Raised when a new layer was drawn - still inside its undo step, so changes made here are part of it.</summary>
+    public event EventHandler<Layer>? LayerCreated;
+
+    /// <summary>The page as displayed (filtered); layer objects are shared with <see cref="Page"/>.</summary>
+    public Page ViewPage() => _filter is null ? Page : new Page
+    {
+        Id = Page.Id, Name = Page.Name, Width = Page.Width, Height = Page.Height, Background = Page.Background,
+        Layers = Page.Layers.Where(l => _filter(l)).ToList(),
+    };
+
+    /// <summary>Redraws without signalling a document change (time or underlay changed).</summary>
+    public void InvalidateRender() { _docRevision++; InvalidateVisual(); }
 
     public ProjectSession Session { get; }
     public Page Page { get; private set; }
@@ -124,6 +160,7 @@ public sealed class EditorCanvas : Control
         History = Session.HistoryFor(page);
         History.Changed += OnHistoryChanged;
         Selection.Clear();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
         NotifyDocumentChanged();
         InvalidateMeasure();
     }
@@ -225,8 +262,10 @@ public sealed class EditorCanvas : Control
             using var surface = SKSurface.Create(info, fb.Address, fb.RowBytes);
             if (surface is not null)
             {
-                if (_dragCache is not null && _drag != DragState.None) Session.Renderer.RenderFrom(surface, Page, _dragCache, _dragCacheFrom, EditingTextLayer);
-                else Session.Renderer.Render(surface, Page, 1.0, EditingTextLayer);
+                var view = ViewPage();
+                if (DisplayOverride is { } display) view = display(view);
+                if (_dragCache is not null && _drag != DragState.None) Session.Renderer.RenderFrom(surface, view, _dragCache, _dragCacheFrom, EditingTextLayer);
+                else Session.Renderer.Render(surface, view, 1.0, EditingTextLayer, _underlay);
             }
         }
         _renderedRevision = _docRevision;
@@ -283,7 +322,7 @@ public sealed class EditorCanvas : Control
                     return;
                 }
             }
-            var hit = Page.HitTest(p, tol);
+            var hit = ViewPage().HitTest(p, tol);
             if (hit is null) { if (Selection.Count > 0) Select(Array.Empty<Guid>()); return; }
             if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
             {
@@ -362,6 +401,7 @@ public sealed class EditorCanvas : Control
                 if (!FinishCreating(c)) { History.Rollback(); Select(Array.Empty<Guid>()); }
                 else
                 {
+                    LayerCreated?.Invoke(this, c);
                     History.Commit();
                     if (c is TextLayer t) TextEditRequested?.Invoke(this, t);
                 }
@@ -376,7 +416,7 @@ public sealed class EditorCanvas : Control
         if (Tool != Tool.Select) return;
         if (Selection.Count == 1 && SelectedLayers.FirstOrDefault() is { Locked: false } sel && HitHandle(sel, pos) >= 0)
         { Cursor = new Cursor(StandardCursorType.SizeAll); return; }
-        var hit = Page.HitTest(ToPage(pos), 4 / ViewScale);
+        var hit = ViewPage().HitTest(ToPage(pos), 4 / ViewScale);
         Cursor = new Cursor(hit is null ? StandardCursorType.Arrow : StandardCursorType.Hand);
     }
 
@@ -437,7 +477,7 @@ public sealed class EditorCanvas : Control
         Tool.Arrow => "Pfeil", Tool.Line => "Linie", Tool.Rectangle => "Rechteck", Tool.Ellipse => "Ellipse",
         Tool.Text => "Text", Tool.InfoBox => "Infobox", Tool.Bubble => "Sprechblase", Tool.Step => "Schritt",
         Tool.Highlight => "Hervorhebung", Tool.Blackout => "Schwärzung", Tool.Pixelate => "Verpixeln", Tool.Blur => "Weichzeichnen",
-        Tool.Spotlight => "Spotlight", Tool.Magnifier => "Lupe", Tool.Freehand => "Freihand", Tool.Crop => "Zuschneiden", Tool.Pipette => "Farbpipette", _ => "Auswahl",
+        Tool.Spotlight => "Spotlight", Tool.Magnifier => "Lupe", Tool.Freehand => "Stift", Tool.Marker => "Textmarker", Tool.Crop => "Zuschneiden", Tool.Pipette => "Farbpipette", _ => "Auswahl",
     };
 
     private Layer CreateLayer(Tool tool, PointD p)
@@ -461,6 +501,7 @@ public sealed class EditorCanvas : Control
             Tool.Spotlight => new SpotlightLayer { Rect = r0 },
             Tool.Magnifier => new MagnifierLayer { Rect = r0, Source = r0, Border = s.Color },
             Tool.Freehand => new FreehandLayer { Points = { p }, Stroke = s.Color, StrokeWidth = s.StrokeWidth },
+            Tool.Marker => new FreehandLayer { Points = { p }, Stroke = s.Color.WithAlpha(110), StrokeWidth = Math.Max(14, s.StrokeWidth * 4), Highlighter = true },
             _ => throw new ArgumentOutOfRangeException(nameof(tool)),
         };
     }
@@ -591,4 +632,20 @@ public sealed class EditorCanvas : Control
 
     /// <summary>Flattened page at full resolution (what export and clipboard get).</summary>
     public SKImage RenderFlattened() => Session.Renderer.RenderPage(Page);
+
+    /// <summary>Main colour of a layer (marker keeps its transparency).</summary>
+    public static void SetMainColor(Layer l, ColorRgba c)
+    {
+        switch (l)
+        {
+            case ShapeLayer s: s.Stroke = c; break;
+            case LineLayer ln: ln.Stroke = c; break;
+            case StepLayer st: st.Fill = c; break;
+            case TextLayer t when t.Style == TextStyle.Plain: t.Foreground = c; break;
+            case TextLayer t: t.Border = c; break;
+            case FreehandLayer f: f.Stroke = f.Highlighter ? c.WithAlpha(f.Stroke.A) : c; break;
+            case HighlightLayer h: h.Color = c; break;
+            case MagnifierLayer m: m.Border = c; break;
+        }
+    }
 }

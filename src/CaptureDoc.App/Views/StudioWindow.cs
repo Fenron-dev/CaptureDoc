@@ -312,7 +312,7 @@ public sealed class StudioWindow : Window
         var resolved = Video.VideoStepRenderer.Resolve(_app, _session, v);
         var box = Ui.Column(6,
             Ui.Label("🎬 Video-Schritt", 13, bold: true),
-            Ui.Label(resolved is null ? $"⚠ Videodatei nicht gefunden: {v.Path}" : $"{Path.GetFileName(resolved)} · Clip {Video.TimelineControl.Fmt(v.Start)}–{Video.TimelineControl.Fmt(v.End)} · {v.Cuts.Count} Schnitt(e) · Ergebnis {v.KeptDuration:0.0} s{(v.Overlay is not null ? " · mit Annotationen/Zoom" : "")}", 12),
+            Ui.Label(resolved is null ? $"⚠ Videodatei nicht gefunden: {v.Path}" : $"{Path.GetFileName(resolved)} · Clip {Video.VideoTimeline.Fmt(v.Start)}–{Video.VideoTimeline.Fmt(v.End)} · {v.Cuts.Count} Schnitt(e) · Ergebnis {v.KeptDuration:0.0} s{(v.Overlay is not null ? $" · {v.Overlay.Page.Layers.Count} Annotation(en)" + (v.Overlay.Zoom.Count > 0 ? ", Zoom" : "") + (v.Overlay.Slides.Count > 0 ? $", {v.Overlay.Slides.Count} Folie(n)" : "") : "")}", 12),
             Ui.Label("Das Bild oben ist das Vorschaubild (Poster). Beim Export wird der Clip als Video eingebettet: Obsidian ![[…mp4]], HTML <video>.", 11, opacity: 0.65));
         var fmt = new ComboBox { ItemsSource = new[] { "MP4 (mit Ton, klein)", "GIF (ohne Ton)" }, SelectedIndex = (int)v.Format, Width = 180 };
         fmt.SelectionChanged += (_, _) => { v.Format = (VideoOutputFormat)Math.Max(0, fmt.SelectedIndex); _session.MarkDirty(); RefreshSteps(); };
@@ -346,10 +346,10 @@ public sealed class StudioWindow : Window
     {
         var page = _session.AddPage(poster, posterPng, title);
         video.Path = Video.VideoStepRenderer.Store(_app, _session, file);
-        if (overlay is not null && overlaySource is not null && (overlay.Page.Layers.Any(l => l is not ImageLayer { IsBackground: true }) || overlay.Zoom.Count > 0))
+        if (overlay is not null && overlaySource is not null && Video.OverlayRenderer.HasContent(overlay))
         {
             var copy = Core.Serialization.ProjectJson.Clone(overlay);
-            foreach (var im in copy.Page.AllLayers().OfType<ImageLayer>())
+            foreach (var im in copy.Page.AllLayers().Concat(copy.Slides.SelectMany(sl => sl.Page.AllLayers())).OfType<ImageLayer>())
                 if (overlaySource.Assets.Get(im.AssetId) is { } bytes && !ReferenceEquals(overlaySource, _session))
                 {
                     _session.Assets.Add(bytes);
