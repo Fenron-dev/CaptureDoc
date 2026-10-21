@@ -74,6 +74,12 @@ public sealed class EditorWindow : Window
         Content = root;
 
         _canvas.TextEditRequested += (_, t) => BeginTextEdit(t);
+        _canvas.ColorPicked += (_, c) =>
+        {
+            ApplyColor(c);
+            _status.Text = $"Farbe {c.ToHex()[..7]} übernommen (für neue Elemente und die Auswahl).";
+            SetTool(Tool.Select);
+        };
         _canvas.ViewChanged += (_, _) => UpdateStatus();
         _canvas.DocumentChanged += (_, _) => { UpdateStatus(); PageEdited?.Invoke(this, EventArgs.Empty); };
         _session.Changed += (_, _) => UpdateTitle();
@@ -132,6 +138,7 @@ public sealed class EditorWindow : Window
         ToolBtn(Tool.Blur, "◌", "W");
         bar.Children.Add(new Separator { Width = 10 });
         ToolBtn(Tool.Crop, "⛶", "C");
+        ToolBtn(Tool.Pipette, "💧", "K");
         bar.Children.Add(Ui.Button("✓ Zuschneiden", () => _canvas.ApplyCrop(), "Zuschnitt anwenden (Enter)"));
         bar.Children.Add(new Separator { Width = 10 });
 
@@ -155,6 +162,29 @@ public sealed class EditorWindow : Window
         font.ValueChanged += (_, _) => _canvas.Style.FontSize = (double)(font.Value ?? 28);
         bar.Children.Add(font);
         bar.Children.Add(new Separator { Width = 10 });
+        var styles = new ComboBox { Width = 170, PlaceholderText = "Stilvorlage" };
+        ToolTip.SetTip(styles, "Wiederverwendbare Stilvorlagen für neue Elemente (Farbe, Stärke, Schrift, Schatten)");
+        void LoadStyles() => styles.ItemsSource = Core.Portable.ToolStyle.BuiltIn.Concat(_app.Settings.Shared.StylePresets).Select(s => s.Name).ToList();
+        LoadStyles();
+        styles.SelectionChanged += (_, _) =>
+        {
+            var all = Core.Portable.ToolStyle.BuiltIn.Concat(_app.Settings.Shared.StylePresets).ToList();
+            if (styles.SelectedIndex < 0 || styles.SelectedIndex >= all.Count) return;
+            var st = Core.Serialization.ProjectJson.Clone(all[styles.SelectedIndex]);
+            _canvas.Style = st; _app.Settings.Shared.Style = st; _app.SaveSettings();
+            stroke.Value = (decimal)st.StrokeWidth; font.Value = (decimal)st.FontSize;
+            _status.Text = $"Stil „{st.Name}“ aktiv für neue Elemente.";
+        };
+        bar.Children.Add(styles);
+        bar.Children.Add(Ui.Button("＋Stil", () =>
+        {
+            var copy = Core.Serialization.ProjectJson.Clone(_canvas.Style);
+            copy.Name = $"Eigener Stil {_app.Settings.Shared.StylePresets.Count + 1}";
+            _app.Settings.Shared.StylePresets.Add(copy); _app.SaveSettings(); LoadStyles();
+            _status.Text = $"„{copy.Name}“ gespeichert.";
+        }, "Aktuellen Stil als Vorlage speichern"));
+        bar.Children.Add(Ui.Button("🖼＋", async () => await InsertImageAsync(), "Weiteres Bild als Ebene einfügen (Ausschnitte kombinieren)"));
+        bar.Children.Add(new Separator { Width = 10 });
         bar.Children.Add(Ui.Button("↶", _canvas.Undo, "Rückgängig (Strg+Z)"));
         bar.Children.Add(Ui.Button("↷", _canvas.Redo, "Wiederholen (Strg+Y)"));
         bar.Children.Add(Ui.Button("−", () => _canvas.Zoom /= 1.25, "Verkleinern (Strg+-)"));
@@ -167,6 +197,7 @@ public sealed class EditorWindow : Window
     private Control BuildBottomBar()
     {
         var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 4 };
+        right.Children.Add(Ui.Button("📌", PinImage, "Bild anheften – bleibt über allen Fenstern (Strg+P)"));
         right.Children.Add(Ui.Button("📋 Kopieren", CopyImage, "Bild in die Zwischenablage (Strg+C)"));
         right.Children.Add(Ui.Button("⭳ Schnell speichern", async () => await QuickSaveAsync(), "Mit Standardprofil in den letzten Ordner speichern (Strg+Umschalt+E)"));
         right.Children.Add(Ui.Button("Exportieren…", async () => await ExportAsync(), "Format, Größe und Dateigrößenlimit wählen (Strg+E)"));
@@ -248,6 +279,7 @@ public sealed class EditorWindow : Window
             case Key.C when ctrl && shift: CopyLayers(); break;
             case Key.C when ctrl: CopyImage(); break;
             case Key.V when ctrl: PasteLayers(); break;
+            case Key.P when ctrl: PinImage(); break;
             case Key.D when ctrl: _canvas.DuplicateSelection(); break;
             case Key.G when ctrl && shift: _canvas.UngroupSelection(); break;
             case Key.G when ctrl: _canvas.GroupSelection(); break;
@@ -290,6 +322,7 @@ public sealed class EditorWindow : Window
             case Key.P: SetTool(Tool.Pixelate); break;
             case Key.W: SetTool(Tool.Blur); break;
             case Key.C when !ctrl: SetTool(Tool.Crop); break;
+            case Key.K: SetTool(Tool.Pipette); break;
             default: handled = false; break;
         }
         e.Handled = handled;
@@ -353,6 +386,30 @@ public sealed class EditorWindow : Window
         var png = SkiaConvert.EncodePng(img, 3);
         var ok = _app.Clipboard.SetImage(raw, png);
         _status.Text = ok ? $"In Zwischenablage kopiert ({img.Width} × {img.Height} px)" : "⚠ Zwischenablage ist von einem anderen Programm blockiert.";
+    }
+
+    private async Task InsertImageAsync()
+    {
+        var path = await Dialogs.OpenFileAsync(this, "Bild einfügen", _app.Env.MediaDir, ("Bilder", new[] { "*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.bmp" }));
+        if (path is null) return;
+        var bytes = await File.ReadAllBytesAsync(path);
+        using var img = SkiaSharp.SKImage.FromEncodedData(bytes);
+        if (img is null) { await Dialogs.InfoAsync(this, "Bild einfügen", "Bildformat nicht erkannt."); return; }
+        var png = path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? bytes : SkiaConvert.EncodePng(img);
+        var id = _session.Assets.Add(png);
+        _session.Project.Assets[id] = new AssetInfo { Id = id, FileName = id + ".png", Width = img.Width, Height = img.Height, Length = png.LongLength };
+        var p = _canvas.Page;
+        var f = Math.Min(1.0, Math.Min(p.Width * 0.5 / img.Width, p.Height * 0.5 / img.Height));
+        var layer = new ImageLayer { AssetId = id, Name = Path.GetFileNameWithoutExtension(path), Rect = new RectD(24, 24, img.Width * f, img.Height * f), Shadow = true, BorderWidth = 1 };
+        _canvas.Apply("Bild einfügen", () => p.Layers.Add(layer));
+        _canvas.Select(new[] { layer.Id });
+    }
+
+    private void PinImage()
+    {
+        CommitTextEdit();
+        using var img = _canvas.RenderFlattened();
+        new PinWindow(Ui.ToBitmap(img)).Show();
     }
 
     private void CopyLayers()
@@ -423,6 +480,7 @@ public sealed class EditorWindow : Window
     {
         CommitTextEdit();
         if (_isStudioPage && Owner is StudioWindow studio) return await studio.SaveAsync(saveAs);
+        if (_isStudioPage && Owner is Video.VideoEditorWindow) { Close(); return true; } // video annotations are kept by the video editor
         var ok = await ProjectSaver.SaveAsync(this, _app, _session, saveAs);
         if (ok) _status.Text = "Projekt gespeichert: " + _session.FilePath;
         return ok;

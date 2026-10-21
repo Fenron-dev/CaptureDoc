@@ -204,16 +204,17 @@ public class ProjectFileTests
     [Fact]
     public void Migration_chain_upgrades_old_json()
     {
-        ProjectFile.Migrations.Add(new RenameTitleMigration());
+        var m = new RenameTitleMigration();
+        ProjectFile.Migrations.Add(m);
         try
         {
             var old = JsonNode.Parse("""{"formatVersion":0,"name":"Alt","pages":[]}""")!;
             var v = 0;
             var migrated = ProjectFile.Migrate(old, ref v);
-            Assert.Equal(1, v);
+            Assert.Equal(CaptureProject.CurrentFormatVersion, v);   // 0 → 1 → 2
             Assert.Equal("Alt", migrated["title"]!.GetValue<string>());
         }
-        finally { ProjectFile.Migrations.Clear(); }
+        finally { ProjectFile.Migrations.Remove(m); }
     }
 
     [Fact]

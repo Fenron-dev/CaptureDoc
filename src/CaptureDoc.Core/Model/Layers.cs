@@ -57,6 +57,10 @@ public sealed class ImageLayer : BoxLayer
     public override string Kind => IsBackground ? "Hintergrund" : "Bild";
     public string AssetId { get; set; } = "";
     public bool IsBackground { get; set; }
+    public bool Shadow { get; set; }
+    public double BorderWidth { get; set; }
+    public ColorRgba BorderColor { get; set; } = new(160, 160, 160);
+    public double CornerRadius { get; set; }
 }
 
 public enum ShapeKind { Rectangle, Ellipse, RoundedRectangle }
@@ -249,6 +253,16 @@ public sealed class GroupLayer : Layer
 {
     public override string Kind => "Gruppe";
     public List<Layer> Children { get; set; } = new();
+
+    /// <summary>All nested children (depth first).</summary>
+    public IEnumerable<Layer> AllChildren()
+    {
+        foreach (var c in Children)
+        {
+            yield return c;
+            if (c is GroupLayer g) foreach (var cc in g.AllChildren()) yield return cc;
+        }
+    }
 
     public override RectD Bounds
     {

@@ -69,6 +69,35 @@ public class MiscTests
     }
 
     [Fact]
+    public void Startup_commands_are_parsed()
+    {
+        var c = StartupCommand.Parse(new[] { "--capture", "Region", "a.capturedoc", "--studio" });
+        Assert.Equal("region", c.Capture);
+        Assert.True(c.Studio);
+        Assert.Equal(new[] { "a.capturedoc" }, c.Files);
+        Assert.Null(StartupCommand.Parse(new[] { "--capture", "unsinn" }).Capture);
+    }
+
+    [Fact]
+    public void Second_instance_forwards_arguments_to_the_first()
+    {
+        using var t = new TempDir();
+        using var first = new SingleInstance(t.Path);
+        Assert.True(first.IsFirst);
+        string[]? received = null;
+        using var got = new ManualResetEventSlim();
+        first.CommandReceived += (_, a) => { received = a; got.Set(); };
+        first.Listen();
+        using (var second = new SingleInstance(t.Path))
+        {
+            Assert.False(second.IsFirst);
+            Assert.True(second.Send(new[] { "--capture", "video" }));
+        }
+        Assert.True(got.Wait(TimeSpan.FromSeconds(5)), "command not received");
+        Assert.Equal(new[] { "--capture", "video" }, received);
+    }
+
+    [Fact]
     public void Raw_image_crop_uses_virtual_coordinates()
     {
         // 4x2 image located at virtual (-4,0) (monitor left of the primary)

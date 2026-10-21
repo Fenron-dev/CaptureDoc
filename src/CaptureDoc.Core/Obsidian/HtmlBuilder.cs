@@ -38,7 +38,7 @@ document.addEventListener('keydown',function(e){if(!lb.classList.contains('open'
         sb.Append("<!doctype html>\n<html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
         sb.Append($"<title>{E(title)}</title><meta name=\"generator\" content=\"CaptureDoc\"><style>");
         sb.Append("body{font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;max-width:860px;margin:2rem auto;padding:0 1rem;color:#1b1b1f;background:#fff}");
-        sb.Append("img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:6px}h1{font-size:2rem}h2{margin-top:2.2rem;border-bottom:1px solid #eee;padding-bottom:.3rem}");
+        sb.Append("img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:6px}video{max-width:100%;height:auto;border-radius:6px;background:#000}h1{font-size:2rem}h2{margin-top:2.2rem;border-bottom:1px solid #eee;padding-bottom:.3rem}");
         sb.Append(".callout{border-left:4px solid #2f80ed;background:#f2f7ff;padding:.6rem 1rem;margin:1rem 0;border-radius:4px}.callout.warning,.callout.danger{border-color:#e5484d;background:#fff4f4}.callout.tip,.callout.success{border-color:#30a46c;background:#f1fbf5}");
         sb.Append(".callout b{display:block}.tags span{display:inline-block;background:#eef;border-radius:10px;padding:0 .6rem;margin-right:.3rem;font-size:.85rem}ul.check{list-style:none;padding-left:0}ul.check li:before{content:'☐ '}");
         sb.Append("figure{margin:1rem 0}a.zoom{display:inline-block;cursor:zoom-in}a.zoom:focus-visible img{outline:3px solid #2f80ed}");
@@ -63,7 +63,12 @@ document.addEventListener('keydown',function(e){if(!lb.classList.contains('open'
             {
                 var src = string.Join('/', img.LinkTarget.Split('/').Select(Uri.EscapeDataString));
                 var w = img.DisplayWidth is { } dw ? $" width=\"{dw}\"" : "";
-                sb.Append($"<figure><a class=\"zoom\" href=\"{src}\" title=\"Klicken zum Vergrößern\"><img src=\"{src}\" alt=\"{E(img.AltText)}\"{w} loading=\"lazy\"></a></figure>\n");
+                if (img.IsVideo)
+                {
+                    var poster = img.PosterTarget is { } pt ? $" poster=\"{string.Join('/', pt.Split('/').Select(Uri.EscapeDataString))}\"" : "";
+                    sb.Append($"<figure><video controls preload=\"metadata\" playsinline{w}{poster} src=\"{src}\" title=\"{E(img.AltText)}\">Video: <a href=\"{src}\">{E(img.AltText)}</a></video></figure>\n");
+                }
+                else sb.Append($"<figure><a class=\"zoom\" href=\"{src}\" title=\"Klicken zum Vergrößern\"><img src=\"{src}\" alt=\"{E(img.AltText)}\"{w} loading=\"lazy\"></a></figure>\n");
             }
             if (!string.IsNullOrWhiteSpace(s.Text)) sb.Append(Para(s.Text.Trim())).Append('\n');
             foreach (var c in s.Callouts) sb.Append(Callout(c.Kind, c.Title, c.Text));

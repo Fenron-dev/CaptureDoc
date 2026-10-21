@@ -28,6 +28,25 @@ public sealed class SceneRenderer
         return surface.Snapshot();
     }
 
+    /// <summary>Renders only the top-level layers <c>[0, count)</c> (used as a static cache while dragging).</summary>
+    public SKImage RenderBelow(Page page, int count)
+    {
+        using var surface = SKSurface.Create(new SKImageInfo(Math.Max(1, page.Width), Math.Max(1, page.Height), SKColorType.Rgba8888, SKAlphaType.Premul))!;
+        var c = surface.Canvas;
+        c.Clear(page.Background.ToSk());
+        for (var i = 0; i < Math.Min(count, page.Layers.Count); i++) DrawLayer(surface, c, page, page.Layers[i], 1.0, null, 1.0);
+        return surface.Snapshot();
+    }
+
+    /// <summary>Draws <paramref name="below"/> and then the top-level layers from <paramref name="from"/> on (same result as a full render).</summary>
+    public void RenderFrom(SKSurface surface, Page page, SKImage below, int from, Guid? hideLayer = null)
+    {
+        var c = surface.Canvas;
+        c.Clear(SKColors.Transparent);
+        c.DrawImage(below, 0, 0);
+        for (var i = Math.Max(0, from); i < page.Layers.Count; i++) DrawLayer(surface, c, page, page.Layers[i], 1.0, hideLayer, 1.0);
+    }
+
     public void Render(SKSurface surface, Page page, double scale, Guid? hideLayer = null)
     {
         var c = surface.Canvas;
@@ -74,10 +93,22 @@ public sealed class SceneRenderer
             c.DrawRect(dst, p); c.DrawLine(dst.Left, dst.Top, dst.Right, dst.Bottom, p); c.DrawLine(dst.Right, dst.Top, dst.Left, dst.Bottom, p);
             return;
         }
+        if (im.Shadow)
+        {
+            using var sh = new SKPaint { Color = new SKColor(0, 0, 0, (byte)(120 * op)), ImageFilter = SKImageFilter.CreateBlur(10, 10), IsAntialias = true };
+            c.DrawRoundRect(SKRect.Inflate(dst, -2, -2).Offset2(6, 8), (float)im.CornerRadius, (float)im.CornerRadius, sh);
+        }
         using var paint = new SKPaint { Color = SKColors.White.WithAlpha((byte)(255 * op)) };
+        if (im.CornerRadius > 0) { c.Save(); c.ClipRoundRect(new SKRoundRect(dst, (float)im.CornerRadius), antialias: true); }
         // Pixel-exact for unscaled background images, smooth otherwise.
         var exact = Math.Abs(dst.Width - img.Width) < 0.01 && Math.Abs(dst.Height - img.Height) < 0.01 && Math.Abs(c.TotalMatrix.ScaleX - 1) < 1e-6;
         c.DrawImage(img, new SKRect(0, 0, img.Width, img.Height), dst, exact ? new SKSamplingOptions(SKFilterMode.Nearest) : Smooth, paint);
+        if (im.CornerRadius > 0) c.Restore();
+        if (im.BorderWidth > 0)
+        {
+            using var bp = new SKPaint { Color = im.BorderColor.ToSk(op), Style = SKPaintStyle.Stroke, StrokeWidth = (float)im.BorderWidth, IsAntialias = true };
+            c.DrawRoundRect(dst, (float)im.CornerRadius, (float)im.CornerRadius, bp);
+        }
     }
 
     private static SKImageFilter? Shadow(bool on, double size) =>
@@ -128,8 +159,11 @@ public sealed class SceneRenderer
         using var fill = new SKPaint { Color = ln.Stroke.ToSk(op), Style = SKPaintStyle.Fill, IsAntialias = true };
 
         // Draw everything into one layer so the shadow is cast once for line + heads.
+        // The layer is limited to the arrow's bounds – a full-canvas layer costs ~0.6 s per arrow at 4K.
         using var layerPaint = new SKPaint { ImageFilter = shadow };
-        c.SaveLayer(layerPaint);
+        var pad = head + sw * 2 + 12;
+        var lb2 = new SKRect(Math.Min(a.X, b.X) - pad, Math.Min(a.Y, b.Y) - pad, Math.Max(a.X, b.X) + pad, Math.Max(a.Y, b.Y) + pad);
+        if (shadow is not null) c.SaveLayer(lb2, layerPaint); else c.Save();
         c.DrawLine(la, lb, stroke);
         if (ln.EndCap == LineCap.Arrow) DrawHead(c, b, u, n, head, half, fill);
         if (ln.StartCap == LineCap.Arrow) DrawHead(c, a, new SKPoint(-u.X, -u.Y), n, head, half, fill);

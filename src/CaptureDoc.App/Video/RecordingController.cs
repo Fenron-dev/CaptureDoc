@@ -47,6 +47,13 @@ public sealed class RecordingController
             var opt = _app.Settings.Platform;
             if (opt.RecordingCountdown > 0) await CountdownWindow.RunAsync(opt.RecordingCountdown);
 
+            if (OperatingSystem.IsMacOS())
+            {
+                // avfoundation records a whole screen; area is cropped relative to that screen (untested on real hardware)
+                ScreenRecorder.MacScreenDevice = await MediaProbe.FindMacScreenDeviceAsync(tools) ?? 1;
+                var primary = _app.Capture.GetMonitors().FirstOrDefault(m => m.IsPrimary);
+                ScreenRecorder.MacScreenOrigin = primary is null ? (0, 0) : (primary.Bounds.X, primary.Bounds.Y);
+            }
             var work = Path.Combine(_app.Env.TempDir, $"rec-{DateTime.Now:yyyyMMdd-HHmmss}");
             string? mic = null;
             if (opt.RecordMicrophone && !string.IsNullOrWhiteSpace(opt.MicrophoneDevice)) mic = opt.MicrophoneDevice;
@@ -60,7 +67,8 @@ public sealed class RecordingController
             if (file is not null)
             {
                 Log.Info($"Recording saved {region.Width}x{region.Height}");
-                var ed = new VideoEditorWindow(_app, file);
+                List<(double, int, int)> clicks; lock (session.Clicks) clicks = session.Clicks.ToList();
+                var ed = new VideoEditorWindow(_app, file, clicks: clicks);
                 ed.Show();
                 ed.Activate();
             }
@@ -92,6 +100,9 @@ internal sealed class RecordingSessionUi
     private TextBlock? _time, _state;
     private Button? _pause;
     private DispatcherTimer? _timer;
+    private IDisposable? _hook;
+    /// <summary>Clicks inside the area: recording time (s) and position relative to the area.</summary>
+    public List<(double T, int X, int Y)> Clicks { get; } = new();
 
     public RecordingSessionUi(AppServices app, ScreenRecorder rec) { _app = app; _rec = rec; }
 
@@ -100,6 +111,17 @@ internal sealed class RecordingSessionUi
         ShowFrame(_rec.EffectiveRegion);
         ShowBar(_rec.EffectiveRegion);
         _rec.StateChanged += (_, _) => Dispatcher.UIThread.Post(UpdateUi);
+        if (OperatingSystem.IsWindows() && _app.Settings.Platform.HighlightClicks)
+        {
+            var hook = new CaptureDoc.Platform.Windows.WindowsMouseHook();
+            var area = _rec.EffectiveRegion;
+            hook.Click += (x, y, _) =>
+            {
+                if (_rec.State != RecorderState.Recording || !area.Contains(x, y)) return;
+                lock (Clicks) Clicks.Add((_rec.Elapsed.TotalSeconds, x - area.X, y - area.Y));
+            };
+            _hook = hook;
+        }
         _rec.Start();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _timer.Tick += (_, _) => UpdateUi();
@@ -107,6 +129,7 @@ internal sealed class RecordingSessionUi
         try { return await _done.Task; }
         finally
         {
+            _hook?.Dispose();
             _timer.Stop();
             foreach (var w in _frame) w.Close();
             _bar?.Close();

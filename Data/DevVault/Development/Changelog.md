@@ -3,6 +3,17 @@ tags: [changelog]
 ---
 # Changelog
 
+## 0.3.0 – 2026-10-21
+- **Video-Editor**: markierte Schnitte als Liste mit ✕ (Markierung zurücknehmen), Entf im Schnitt, „✂ Schnitte anwenden“ → neue gekürzte Fassung; MP4 „verlustfrei schneiden“ (Stream Copy).
+- **Video-Schritte in Anleitungen**: Clip mit Schnitten/Annotationen als Schritt; Export nach Obsidian/Markdown (eingebettetes MP4/GIF), HTML (`<video>` mit Poster), PDF (Standbild + Hinweis). Projektformat **v2** (Migration von v1 automatisch).
+- **Phase 7**: zeitgesteuerte Annotationen (alle Ebenentypen), Bewegung, Zoom/Pan-Keyframes, Live-Vorschau.
+- **Mausklicks** werden während der Aufnahme als bearbeitbare Ring-Annotationen erfasst.
+- **macOS/Linux**: Capture, Video (macOS/X11), Zwischenablage über Systemwerkzeuge; .app-Bundle; plattformneutrale Einzelinstanz; Startbefehle `--capture …`, `--studio`.
+- **Paket**: `tools/publish.ps1` baut Windows + Linux + macOS in einen Ordner, `-Zip` erzeugt ein ZIP mit Ausführungsrechten und ohne Nutzerdaten.
+- **Editor**: Ebenen per Drag & Drop, 📌 Anheften, 💧 Pipette, Stilvorlagen, Bild einfügen, Rahmen & Schatten; **Serienaufnahme** ins Studio; **PDF-Export**.
+- **Performance**: Pfeile mit Schatten 25× schneller (Zwischenebene auf Pfeilbereich begrenzt), Drag-Cache für große Bilder (4K: 377 → 70 ms je Bewegung, pixelgleich).
+- Behoben: Deadlock-Gefahr beim GIF-Export aus dem Studio (synchroner FFmpeg-Aufruf auf dem UI-Thread), falsche GIF-Dauer nach `zoompan`, `TimelineControl.Clip` verdeckte `Visual.Clip`, Start unter macOS/Linux (benannte Events nicht verfügbar), ZIP enthielt Logs/Nutzerdaten.
+
 ## 0.2.0 – 2026-10-20
 - **HTML-Export**: Bild-Popup (Lightbox) mit Einpassen/1:1, Blättern, Tastatursteuerung; funktioniert offline.
 - **Video/GIF (Phase 6)**: Bildschirmaufnahme mit Pause, Video-Editor (Timeline, Start/Ende, Schnitte), Export MP4 und GIF mit geprüften Größenlimits, Frame → Editor/Anleitung. Benötigt externes FFmpeg ([[ADR-006 Video mit FFmpeg]]).

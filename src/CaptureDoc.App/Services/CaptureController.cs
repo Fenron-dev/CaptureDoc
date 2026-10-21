@@ -21,6 +21,63 @@ public sealed class CaptureController
 
     public CaptureController(AppServices app) => _app = app;
 
+    /// <summary>
+    /// Series: choose an area once, then take <paramref name="count"/> screenshots every <paramref name="interval"/> seconds.
+    /// A visible counter (excluded from the screenshots) shows progress; Esc in the counter window stops.
+    /// </summary>
+    public async Task<List<RawImage>> CaptureSeriesAsync(int count, double interval)
+    {
+        var shots = new List<RawImage>();
+        if (_busy || !_app.Capture.IsSupported) return shots;
+        _busy = true;
+        var hidden = App.Current.OpenWindows.Where(w => w.IsVisible).ToList();
+        try
+        {
+            foreach (var w in hidden) w.Hide();
+            await Task.Delay(220);
+            var frozen = _app.Capture.CaptureVirtualScreen(false);
+            var area = await RegionSelector.SelectAsync(frozen, _app.Capture.GetWindows(), SelectorMode.RegionOrWindow, App.Current.AnyWindow);
+            if (area is not { } region) return shots;
+            var counter = new Window
+            {
+                WindowDecorations = WindowDecorations.None, Topmost = true, ShowInTaskbar = false, SizeToContent = SizeToContent.WidthAndHeight, CanResize = false,
+                Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromArgb(230, 25, 25, 30)), WindowStartupLocation = WindowStartupLocation.Manual,
+            };
+            var label = new TextBlock { Foreground = Avalonia.Media.Brushes.White, Margin = new Avalonia.Thickness(14, 8), FontSize = 14 };
+            counter.Content = label;
+            var stop = false;
+            counter.KeyDown += (_, e) => { if (e.Key == Avalonia.Input.Key.Escape) stop = true; };
+            counter.PointerPressed += (_, _) => stop = true;
+            counter.Opened += (_, _) =>
+            {
+                if (OperatingSystem.IsWindows()) CaptureDoc.Platform.Windows.WindowTools.ExcludeFromCapture(counter.TryGetPlatformHandle()?.Handle ?? 0);
+                var wa = counter.Screens.Primary?.WorkingArea ?? new Avalonia.PixelRect(0, 0, 1600, 900);
+                counter.Position = new Avalonia.PixelPoint(wa.Right - 260, wa.Bottom - 70);
+            };
+            counter.Show();
+            for (var i = 0; i < count && !stop; i++)
+            {
+                label.Text = $"📷 Serie {i + 1}/{count} · Klick = stoppen";
+                shots.Add(_app.Capture.Capture(region, _app.Settings.Platform.IncludeCursor));
+                if (i < count - 1) await Task.Delay(TimeSpan.FromSeconds(Math.Max(0.2, interval)));
+            }
+            counter.Close();
+            Log.Info($"Series: {shots.Count} shots {region.Width}x{region.Height}");
+            return shots;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Series failed", ex);
+            await Dialogs.InfoAsync(null, "Serienaufnahme fehlgeschlagen", ex.Message);
+            return shots;
+        }
+        finally
+        {
+            foreach (var w in hidden) w.Show();
+            _busy = false;
+        }
+    }
+
     public async Task CaptureAsync(CaptureMode mode, int? delaySeconds = null)
     {
         if (_busy) return;

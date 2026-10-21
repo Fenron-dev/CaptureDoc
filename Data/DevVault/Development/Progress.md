@@ -3,6 +3,19 @@ tags: [fortschritt]
 ---
 # Fortschritt
 
+## 2026-10-21 – 0.3.0: Schnitte, Video-Schritte, Phase 7–10
+**Implementiert**
+- Schnitte im Video-Editor sichtbar und umkehrbar (Chips mit ✕, Entf), „Schnitte anwenden“ erzeugt gekürzte Fassung; verlustfreies Schneiden (Stream Copy).
+- Ganzes Video bzw. Clip als **Anleitungsschritt** (Obsidian/Markdown-Embed, HTML `<video>`, PDF-Standbild), Projektformat v2 mit Migration, Videopfade relativ/portabel und beim „Speichern unter“ umgerechnet.
+- Phase 7: zeitgesteuerte Annotationen mit Bewegung, Zoom/Pan-Keyframes, Live-Vorschau, Export auf Videopixel (Schwärzung eingebrannt).
+- Mausklick-Markierung als bearbeitbare Annotationen.
+- Phase 8/9: macOS/Linux-Adapter über Systemwerkzeuge, plattformneutrale Einzelinstanz mit Startbefehlen, Multi-Plattform-Paket (3 Starter) + ZIP mit Ausführungsrechten, ohne Nutzerdaten.
+- Phase 10: PDF-Export, Ebenen per Drag & Drop, Anheften, Pipette, Stilvorlagen, Bild einfügen, Rahmen & Schatten, Serienaufnahme, Renderer-Beschleunigung.
+
+**Getestet**: 137 automatisierte Tests inkl. 4 Headless-UI-Tests ([[Test-Results]]). GUI-Test per Bildschirmsteuerung war für diese Version nicht freigegeben → manuelle Prüfung der neuen Oberflächenteile steht aus.
+
+**Gefunden und behoben**: Pfeil-Schatten über Vollbild-Ebene (0,6 s je Pfeil bei 4K), Deadlock-Risiko beim GIF-Export von Video-Schritten, Zeitstempel nach `zoompan`, `Visual.Clip` überdeckt, Einzelinstanz unter Unix nicht lauffähig. [[Changelog]]
+
 ## 2026-10-20 (Abend) – 0.2.0: HTML-Bild-Popup + Phase 6
 **Implementiert**
 - HTML-Export: Klick auf ein Bild öffnet es groß (eingepasst), Klick/Leertaste = 1:1, ←/→ blättern, Esc schließen; offline, ohne externe Skripte; ohne JavaScript öffnet der Link das Bild.

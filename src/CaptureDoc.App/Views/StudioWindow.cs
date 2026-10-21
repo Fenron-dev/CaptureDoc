@@ -107,11 +107,14 @@ public sealed class StudioWindow : Window
         top.Children.Add(Ui.Button("Speichern unter…", async () => await SaveAsync(true)));
         top.Children.Add(new Separator { Width = 16 });
         top.Children.Add(Ui.Button("📷 Bereich aufnehmen", async () => await CaptureStepAsync(), "Neuer Schritt aus einer Bereichsaufnahme"));
+        top.Children.Add(Ui.Button("📷×N Serie", async () => await CaptureSeriesAsync(), "Gleichen Bereich mehrmals im Abstand aufnehmen – jedes Bild wird ein Schritt"));
         top.Children.Add(Ui.Button("🖼 Bild hinzufügen…", async () => await AddImageFileAsync(), "PNG/JPEG oder .capturedoc als Schritt hinzufügen"));
+        top.Children.Add(Ui.Button("🎬 Video hinzufügen…", async () => await AddVideoFileAsync(), "Ganzes Video (MP4/MKV/WebM/MOV) als Schritt – wird beim Export eingebettet"));
         top.Children.Add(new Separator { Width = 16 });
         top.Children.Add(Ui.Button("⇪ Obsidian-Export…", async () => await ExportObsidianAsync(), "Vorschau, Konfliktprüfung und Export in den gewählten Vault", accent: true));
         top.Children.Add(Ui.Button("Markdown…", async () => await ExportMarkdownFolderAsync(), "Als Markdown in beliebigen Ordner"));
-        top.Children.Add(Ui.Button("HTML…", async () => await ExportHtmlAsync(), "Eigenständige HTML-Seite (im Browser als PDF druckbar)"));
+        top.Children.Add(Ui.Button("HTML…", async () => await ExportHtmlAsync(), "Eigenständige HTML-Seite mit Bild-Popup und eingebetteten Videos"));
+        top.Children.Add(Ui.Button("PDF…", async () => await ExportPdfAsync(), "PDF-Dokument (Videos erscheinen als Standbild mit Hinweis)"));
 
         // left: meta + steps
         var stepButtons = new WrapPanel
@@ -236,7 +239,7 @@ public sealed class StudioWindow : Window
             items.Add(new Border
             {
                 Padding = new Thickness(2), Tag = s,
-                Child = Ui.Row(img, Ui.Column(2, Ui.Label($"{n}. {(string.IsNullOrWhiteSpace(s.Title) ? "(ohne Titel)" : s.Title)}", 13, bold: true), Ui.Label(page is null ? "Textschritt" : $"{page.Width}×{page.Height}", 11, opacity: 0.6))),
+                Child = Ui.Row(img, Ui.Column(2, Ui.Label($"{n}. {(string.IsNullOrWhiteSpace(s.Title) ? "(ohne Titel)" : s.Title)}", 13, bold: true), Ui.Label(s.Video is { } vr ? $"🎬 Video {vr.KeptDuration:0.0} s · {vr.Format.ToString().ToUpperInvariant()}{(vr.Overlay is not null ? " · Annotationen" : "")}" : page is null ? "Textschritt" : $"{page.Width}×{page.Height}", 11, opacity: 0.6))),
             });
         }
         _steps.ItemsSource = items;
@@ -275,6 +278,8 @@ public sealed class StudioWindow : Window
             _stepEditor.Children.Add(new Border { Child = new Image { Source = preview, MaxHeight = 360, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left }, BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1) });
         }
 
+        if (s.Video is { } video) BuildVideoPanel(s, video);
+
         _stepEditor.Children.Add(Ui.Label("Hinweise / Callouts", 13, bold: true));
         foreach (var c in s.Callouts.ToList())
         {
@@ -301,6 +306,93 @@ public sealed class StudioWindow : Window
     }
 
     // ---------------------------------------------------------------- steps
+
+    private void BuildVideoPanel(GuideStep s, VideoRef v)
+    {
+        var resolved = Video.VideoStepRenderer.Resolve(_app, _session, v);
+        var box = Ui.Column(6,
+            Ui.Label("🎬 Video-Schritt", 13, bold: true),
+            Ui.Label(resolved is null ? $"⚠ Videodatei nicht gefunden: {v.Path}" : $"{Path.GetFileName(resolved)} · Clip {Video.TimelineControl.Fmt(v.Start)}–{Video.TimelineControl.Fmt(v.End)} · {v.Cuts.Count} Schnitt(e) · Ergebnis {v.KeptDuration:0.0} s{(v.Overlay is not null ? " · mit Annotationen/Zoom" : "")}", 12),
+            Ui.Label("Das Bild oben ist das Vorschaubild (Poster). Beim Export wird der Clip als Video eingebettet: Obsidian ![[…mp4]], HTML <video>.", 11, opacity: 0.65));
+        var fmt = new ComboBox { ItemsSource = new[] { "MP4 (mit Ton, klein)", "GIF (ohne Ton)" }, SelectedIndex = (int)v.Format, Width = 180 };
+        fmt.SelectionChanged += (_, _) => { v.Format = (VideoOutputFormat)Math.Max(0, fmt.SelectedIndex); _session.MarkDirty(); RefreshSteps(); };
+        var maxW = new NumericUpDown { Value = v.MaxWidth ?? 0, Minimum = 0, Maximum = 8000, FormatString = "0", Width = 130 };
+        maxW.ValueChanged += (_, _) => { v.MaxWidth = maxW.Value is > 0 ? (int)maxW.Value : null; _session.MarkDirty(); };
+        var maxMb = new NumericUpDown { Value = v.MaxBytes is { } b ? (decimal)(b / 1024.0 / 1024.0) : 0, Minimum = 0, Maximum = 2000, Increment = 1, FormatString = "0.#", Width = 130 };
+        maxMb.ValueChanged += (_, _) => { v.MaxBytes = maxMb.Value is > 0 ? (long)(maxMb.Value.Value * 1024 * 1024) : null; _session.MarkDirty(); };
+        var audio = new CheckBox { Content = "Ton übernehmen", IsChecked = v.IncludeAudio };
+        audio.IsCheckedChanged += (_, _) => { v.IncludeAudio = audio.IsChecked == true; _session.MarkDirty(); };
+        box.Children.Add(Ui.Row(Ui.Field("Format", fmt), Ui.Field("Max. Breite px", maxW), Ui.Field("Ziel MB (weich)", maxMb)));
+        box.Children.Add(audio);
+        box.Children.Add(Ui.Row(
+            Ui.Button("✂ Schneiden / Annotieren…", () => OpenStepVideo(s), "Clip, Schnitte, zeitgesteuerte Annotationen und Zoom im Video-Editor bearbeiten", accent: true),
+            Ui.Button("Video entfernen", () => { s.Video = null; _session.MarkDirty(); RefreshSteps(); BuildStepEditor(); }, "Schritt behält nur das Bild")));
+        _stepEditor.Children.Add(new Border { Child = box, Padding = new Thickness(8), CornerRadius = new CornerRadius(6), Background = new SolidColorBrush(Color.FromArgb(30, 0, 120, 215)) });
+    }
+
+    private void OpenStepVideo(GuideStep s)
+    {
+        if (s.Video is not { } v) return;
+        if (_app.Ffmpeg is null) { _ = Video.RecordingController.ShowMissingFfmpegAsync(this); return; }
+        var file = Video.VideoStepRenderer.Resolve(_app, _session, v);
+        if (file is null) { _ = Dialogs.InfoAsync(this, "Video fehlt", "Die Videodatei wurde nicht gefunden: " + v.Path); return; }
+        var ed = new Video.VideoEditorWindow(_app, file, s, this);
+        ed.Closed += (_, _) => { RefreshSteps(); BuildStepEditor(); UpdateTitle(); };
+        ed.Show(this);
+    }
+
+    /// <summary>Adds a video step: poster frame becomes the (annotatable) page, the clip is referenced.</summary>
+    public void AddVideoStep(string file, VideoRef video, SkiaSharp.SKImage poster, byte[] posterPng, string title, ProjectSession? overlaySource = null, VideoOverlay? overlay = null)
+    {
+        var page = _session.AddPage(poster, posterPng, title);
+        video.Path = Video.VideoStepRenderer.Store(_app, _session, file);
+        if (overlay is not null && overlaySource is not null && (overlay.Page.Layers.Any(l => l is not ImageLayer { IsBackground: true }) || overlay.Zoom.Count > 0))
+        {
+            var copy = Core.Serialization.ProjectJson.Clone(overlay);
+            foreach (var im in copy.Page.AllLayers().OfType<ImageLayer>())
+                if (overlaySource.Assets.Get(im.AssetId) is { } bytes && !ReferenceEquals(overlaySource, _session))
+                {
+                    _session.Assets.Add(bytes);
+                    if (overlaySource.Project.Assets.TryGetValue(im.AssetId, out var info)) _session.Project.Assets[im.AssetId] = info;
+                }
+            video.Overlay = copy;
+        }
+        var step = new GuideStep { Title = title, PageId = page.Id, Video = video };
+        _session.Project.Guide.Steps.Add(step);
+        _session.MarkDirty();
+        RefreshSteps(_session.Project.Guide.Steps.Count - 1);
+        UpdateTitle();
+        Activate();
+    }
+
+    private async Task AddVideoFileAsync()
+    {
+        if (_app.Ffmpeg is not { } tools) { await Video.RecordingController.ShowMissingFfmpegAsync(this); return; }
+        var path = await Dialogs.OpenFileAsync(this, "Video hinzufügen", Path.Combine(_app.Env.MediaDir, "Aufnahmen"),
+            ("Videos", new[] { "*.mp4", "*.mkv", "*.webm", "*.mov", "*.avi" }));
+        if (path is null) return;
+        try
+        {
+            var info = await Media.MediaProbe.ProbeAsync(tools, path);
+            var png = await new Media.VideoExporter(tools).ExtractFrameAsync(path, Math.Min(0.1, info.Duration / 2));
+            var img = SkiaSharp.SKImage.FromEncodedData(png) ?? throw new InvalidDataException("Vorschaubild konnte nicht gelesen werden.");
+            AddVideoStep(path, new VideoRef { Start = 0, End = info.Duration, IncludeAudio = info.HasAudio, MaxWidth = Math.Min(1280, info.Width) }, img, png, Path.GetFileNameWithoutExtension(path));
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException)
+        {
+            await Dialogs.InfoAsync(this, "Video hinzufügen", ex.Message);
+        }
+    }
+
+    private string ExportWorkDir() => Path.Combine(_app.Env.TempDir, $"export-{Guid.NewGuid():N}");
+
+    private async Task<Dictionary<Guid, RenderedMedia>?> RenderVideosAsync(string work)
+    {
+        if (_session.Project.Guide.Steps.All(s => s.Video is null)) return new();
+        var progress = new Progress<string>(t => _info.Text = t);
+        try { return await Task.Run(() => Video.VideoStepRenderer.RenderAllAsync(_app, _session, work, progress)); }
+        catch (InvalidOperationException ex) { await Dialogs.InfoAsync(this, "Video-Export", ex.Message); return null; }
+    }
 
     private void AddStep(Page? page, string title)
     {
@@ -370,6 +462,23 @@ public sealed class StudioWindow : Window
         AddPageFrom(src, page);
         ed.ForceCloseWithoutPrompt();
         OpenStepEditor();
+    }
+
+    public async Task CaptureSeriesAsync()
+    {
+        var s = _app.Settings.Shared;
+        var shots = await App.Current.Capture.CaptureSeriesAsync(Math.Clamp(s.SeriesCount, 1, 200), s.SeriesIntervalSeconds);
+        var n = _session.Project.Guide.Steps.Count;
+        foreach (var raw in shots)
+        {
+            n++;
+            var img = SkiaConvert.ToSkImage(raw);
+            var png = await Task.Run(() => SkiaConvert.EncodePng(raw));
+            var page = _session.AddPage(img, png, $"Serie {n}");
+            AddStep(page, $"Schritt {n}");
+        }
+        if (shots.Count > 0) _info.Text = $"{shots.Count} Bilder der Serie als Schritte hinzugefügt.";
+        Activate();
     }
 
     private async Task AddImageFileAsync()
@@ -528,13 +637,16 @@ public sealed class StudioWindow : Window
         Dictionary<Guid, RenderedImage> images;
         try { images = await Task.Run(() => RenderStepImages(ImageProfile)); }
         catch (InvalidOperationException ex) { await Dialogs.InfoAsync(this, "Bildexport", ex.Message); return; }
+        var work = ExportWorkDir();
+        var videos = await RenderVideosAsync(work);
+        if (videos is null) return;
         var folder = (v.DefaultFolder ?? "").Trim('/', '\\');
         var guideFolder = SafeFileName.ToSlug(_session.Project.Guide.Title);
         var noteFolder = v.SubfolderPerGuide ? (folder.Length > 0 ? folder + "/" : "") + guideFolder : folder;
         var guide = _session.Project.Guide; var template = SelectedTemplate;
         ExportPlan Plan(ConflictPolicy policy) => ObsidianExporter.Plan(new ObsidianExportRequest
         {
-            VaultRoot = vaultPath, NoteFolder = noteFolder, Guide = guide, Template = template, Images = images,
+            VaultRoot = vaultPath, NoteFolder = noteFolder, Guide = guide, Template = template, Images = images, Videos = videos,
             Links = v.Links, AssetsFolder = v.AssetsFolder, DefaultDisplayWidth = ImageProfile.DisplayWidth ?? v.DefaultDisplayWidth,
             NoteName = guide.Title, Policy = policy,
         });
@@ -542,6 +654,7 @@ public sealed class StudioWindow : Window
         await dlg.ShowDialog(this);
         _info.Text = dlg.Result is { } r ? $"Exportiert nach {r.NotePath}" : "Export abgebrochen.";
         if (dlg.Result is not null) { _session.MarkDirty(); } // ExportId is part of the project – keep it saved
+        TryDelete(work);
     }
 
     private async Task ExportMarkdownFolderAsync()
@@ -550,13 +663,17 @@ public sealed class StudioWindow : Window
         var dir = await Dialogs.PickFolderAsync(this, "Zielordner für Markdown", _app.Env.MediaDir);
         if (dir is null) return;
         var images = await Task.Run(() => RenderStepImages(ImageProfile));
+        var work = ExportWorkDir();
+        var videos = await RenderVideosAsync(work);
+        if (videos is null) return;
         var guide = _session.Project.Guide; var template = SelectedTemplate;
         var dlg = new ObsidianExportDialog(policy => ObsidianExporter.Plan(new ObsidianExportRequest
         {
-            VaultRoot = dir, NoteFolder = SafeFileName.ToSlug(guide.Title), Guide = guide, Template = template, Images = images,
+            VaultRoot = dir, NoteFolder = SafeFileName.ToSlug(guide.Title), Guide = guide, Template = template, Images = images, Videos = videos,
             Links = LinkStyle.Markdown, NoteName = guide.Title, Policy = policy, DefaultDisplayWidth = ImageProfile.DisplayWidth ?? 700,
         }), guide.ExportId) { Title = "Markdown-Export – Vorschau" };
         await dlg.ShowDialog(this);
+        TryDelete(work);
     }
 
     private async Task ExportHtmlAsync()
@@ -569,6 +686,9 @@ public sealed class StudioWindow : Window
         try
         {
             var images = await Task.Run(() => RenderStepImages(profile));
+            var work = ExportWorkDir();
+            var videos = await RenderVideosAsync(work);
+            if (videos is null) return;
             var target = Path.Combine(dir, SafeFileName.ToSlug(guide.Title));
             if (Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any())
                 target = Path.Combine(dir, SafeFileName.MakeUnique(SafeFileName.ToSlug(guide.Title), n => Directory.Exists(Path.Combine(dir, n)), true));
@@ -578,19 +698,56 @@ public sealed class StudioWindow : Window
             foreach (var s in guide.Steps)
             {
                 n++;
-                if (!images.TryGetValue(s.Id, out var img)) continue;
-                var name = $"schritt-{n:00}{img.Extension}";
-                Core.Storage.AtomicFile.WriteAllBytes(Path.Combine(target, "assets", name), img.Data);
-                refs[s.Id] = new($"assets/{name}", s.DisplayWidth ?? profile.DisplayWidth, s.Title);
+                string? posterName = null;
+                if (images.TryGetValue(s.Id, out var img))
+                {
+                    posterName = $"schritt-{n:00}{img.Extension}";
+                    Core.Storage.AtomicFile.WriteAllBytes(Path.Combine(target, "assets", posterName), img.Data);
+                    refs[s.Id] = new($"assets/{posterName}", s.DisplayWidth ?? profile.DisplayWidth, s.Title);
+                }
+                if (videos.TryGetValue(s.Id, out var vid))
+                {
+                    var vname = $"schritt-{n:00}-video{vid.Extension}";
+                    File.Copy(vid.FilePath, Path.Combine(target, "assets", vname), overwrite: true);
+                    refs[s.Id] = new($"assets/{vname}", s.DisplayWidth ?? profile.DisplayWidth, s.Title, vid.IsVideo, posterName is null ? null : $"assets/{posterName}");
+                }
             }
             var html = HtmlBuilder.Build(guide, SelectedTemplate, refs);
             var file = Path.Combine(target, "index.html");
             Core.Storage.AtomicFile.WriteAllText(file, html);
-            await Dialogs.InfoAsync(this, "HTML exportiert", $"{file}\n\nTipp: Im Browser öffnen und „Drucken → Als PDF speichern“ für eine PDF-Version.");
+            TryDelete(work);
+            await Dialogs.InfoAsync(this, "HTML exportiert", $"{file}\n\nBilder öffnen sich per Klick groß, Videos sind direkt abspielbar.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             await Dialogs.InfoAsync(this, "HTML-Export fehlgeschlagen", ex.Message);
+        }
+    }
+
+    private static void TryDelete(string dir)
+    {
+        try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    private async Task ExportPdfAsync()
+    {
+        PullMeta();
+        var guide = _session.Project.Guide;
+        var dir = _app.Settings.Platform.LastSaveDirectory ?? _app.Env.MediaDir;
+        var path = await Dialogs.SaveFileAsync(this, "PDF exportieren", SafeFileName.ToNoteName(guide.Title) + ".pdf", dir, ("PDF", "*.pdf"));
+        if (path is null) return;
+        try
+        {
+            var profile = BuiltInProfiles.Get("documentation-png");
+            var images = await Task.Run(() => RenderStepImages(profile));
+            var template = SelectedTemplate;
+            var pages = await Task.Run(() => PdfGuideExporter.Export(guide, template, images.ToDictionary(k => k.Key, k => k.Value.Data), path));
+            _info.Text = $"PDF exportiert: {path} ({pages} Seiten)";
+            await Dialogs.InfoAsync(this, "PDF exportiert", $"{path}\n{pages} Seite(n). Videos erscheinen als Standbild mit Hinweis.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            await Dialogs.InfoAsync(this, "PDF-Export fehlgeschlagen", ex.Message);
         }
     }
 }

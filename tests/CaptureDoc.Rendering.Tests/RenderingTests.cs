@@ -222,6 +222,94 @@ public class RenderingTests
     }
 
     [Fact]
+    public void Perf_4k_page_with_20_layers_renders_fast_enough_for_dragging()
+    {
+        var (page, r, _) = Scene(3840, 2160);
+        for (var i = 0; i < 16; i++)
+            page.Layers.Add((i % 4) switch
+            {
+                0 => (Layer)new ShapeLayer { Rect = new RectD(100 + i * 200, 200, 300, 200) },
+                1 => new LineLayer { Start = new(100 + i * 200, 900), End = new(300 + i * 200, 1200) },
+                2 => new TextLayer { Rect = new RectD(100 + i * 200, 1400, 400, 0), Text = "Beschriftung mit Text", Style = TextStyle.InfoBox },
+                _ => new StepLayer { Center = new(150 + i * 200, 1900), Number = i },
+            });
+        page.Layers.Add(new RedactLayer { Mode = RedactMode.Pixelate, Rect = new RectD(0, 0, 800, 400) });
+        page.Layers.Add(new RedactLayer { Mode = RedactMode.Blur, Rect = new RectD(1000, 0, 800, 400) });
+        page.Layers.Add(new SpotlightLayer { Rect = new RectD(2000, 500, 900, 600) });
+        page.Layers.Add(new MagnifierLayer { Source = new RectD(10, 10, 100, 100), Rect = new RectD(3000, 1500, 400, 400) });
+        using (r.RenderPage(page)) { } // warm-up (decode + JIT)
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        const int runs = 10;
+        for (var i = 0; i < runs; i++) using (r.RenderPage(page)) { }
+        var ms = sw.Elapsed.TotalMilliseconds / runs;
+        Console.WriteLine($"PERF 4K/20 layers: {ms:0.0} ms per frame");
+        File.WriteAllText(Path.Combine(Path.GetTempPath(), "capturedoc-perf.txt"), $"{ms:0.0}");
+        Assert.True(ms < 250, $"{ms:0} ms");
+    }
+
+    [Fact]
+    public void Drag_cache_render_is_pixel_identical_and_faster()
+    {
+        var (page, r, _) = Scene(3840, 2160);
+        for (var i = 0; i < 12; i++) page.Layers.Add(new LineLayer { Start = new(100 + i * 250, 300), End = new(300 + i * 250, 900) });
+        page.Layers.Add(new ShapeLayer { Rect = new RectD(500, 1200, 600, 400) });                 // "dragged" layer
+        page.Layers.Add(new RedactLayer { Mode = RedactMode.Pixelate, Rect = new RectD(400, 1100, 900, 700) }); // effect above it
+        var from = page.Layers.Count - 2;
+        var info = new SKImageInfo(3840, 2160, SKColorType.Rgba8888, SKAlphaType.Premul);
+        using var full = SKSurface.Create(info);
+        r.Render(full, page, 1.0);
+        using var below = r.RenderBelow(page, from);
+        using var cached = SKSurface.Create(info);
+        r.RenderFrom(cached, page, below, from);
+        using var a = full.Snapshot(); using var b = cached.Snapshot();
+        using var ba = SKBitmap.FromImage(a); using var bb = SKBitmap.FromImage(b);
+        Assert.Equal(ba.Bytes, bb.Bytes);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        for (var i = 0; i < 10; i++) r.RenderFrom(cached, page, below, from);
+        var cachedMs = sw.Elapsed.TotalMilliseconds / 10;
+        sw.Restart();
+        for (var i = 0; i < 3; i++) r.Render(full, page, 1.0);
+        var fullMs = sw.Elapsed.TotalMilliseconds / 3;
+        File.WriteAllText(Path.Combine(Path.GetTempPath(), "capturedoc-perf-drag.txt"), $"{fullMs:0.0} -> {cachedMs:0.0}");
+        Assert.True(cachedMs < fullMs, $"{cachedMs} vs {fullMs}");
+    }
+
+    [Fact]
+    public void Guide_exports_to_multi_page_pdf()
+    {
+        using var t = new TempDir();
+        var g = new Guide { Title = "Drucker konfigurieren", Prerequisites = "Zugriff auf die Einstellungen.", Checklist = { "Drucker sichtbar", "Testseite gedruckt" } };
+        var imgs = new Dictionary<Guid, byte[]>();
+        for (var i = 0; i < 4; i++)
+        {
+            var s = new GuideStep { Title = $"Schritt {i + 1}", Text = string.Join(" ", Enumerable.Repeat("Ein längerer erklärender Text.", 20)), Callouts = { new Callout { Kind = CalloutKind.Warning, Title = "Hinweis", Text = "Prüfen." } } };
+            if (i == 2) s.Video = new VideoRef { Start = 0, End = 12 };
+            g.Steps.Add(s);
+            imgs[s.Id] = NoisePng(800, 500, i);
+        }
+        var path = t.File("guide.pdf");
+        var pages = PdfGuideExporter.Export(g, Core.Obsidian.BuiltInTemplates.All[0], imgs, path);
+        Assert.True(pages >= 3, $"{pages} pages");
+        var bytes = File.ReadAllBytes(path);
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(bytes, 0, 4));
+        Assert.True(bytes.Length > 20_000);
+    }
+
+    [Fact]
+    public void Frame_and_shadow_add_transparent_margin_and_shadow()
+    {
+        var (page, r, _) = Scene(200, 100);
+        PageOperations.AddFrameAndShadow(page, margin: 30, cornerRadius: 10);
+        Assert.Equal(260, page.Width);
+        using var bmp = SKBitmap.FromImage(r.RenderPage(page));
+        Assert.True(Px(bmp, 2, 2).Alpha < 5);                 // outer margin transparent
+        Assert.True(Px(bmp, 120, 136).Alpha > 10);            // shadow below the image
+        Assert.True(Px(bmp, 30, 30).Alpha < 30);              // rounded corner clipped (only faint shadow)
+        Assert.Equal(255, Px(bmp, 130, 80).Alpha);            // image itself opaque
+    }
+
+    [Fact]
     public void Text_wraps_inside_box_width()
     {
         var t = new TextLayer { Rect = new RectD(0, 0, 120, 0), Text = "eins zwei drei vier fünf sechs sieben", FontSize = 20 };

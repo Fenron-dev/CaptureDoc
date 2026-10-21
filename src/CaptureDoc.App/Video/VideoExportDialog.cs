@@ -18,6 +18,7 @@ public sealed class VideoExportDialog : Window
     private readonly MediaInfo _info;
     private readonly ClipRange _clip;
     private readonly bool _gif;
+    private readonly OverlaySpec? _overlay;
     private readonly ComboBox _preset = new() { MinWidth = 260 };
     private readonly NumericUpDown _maxW = Num(0, 8000), _maxH = Num(0, 8000), _fps = Num(0, 60), _colors = Num(2, 256), _maxMb = Num(0, 4000, 0.5m), _minFps = Num(1, 60), _minW = Num(64, 4000);
     private readonly ComboBox _limit = new() { ItemsSource = new[] { "Kein Limit", "Weiches Ziel", "Harte Obergrenze" } };
@@ -27,6 +28,7 @@ public sealed class VideoExportDialog : Window
     private readonly ComboBox _loop = new() { ItemsSource = new[] { "Endlos", "Einmal abspielen" } };
     private readonly CheckBox _dedupe = new() { Content = "Unveränderte Frames entfernen (kleiner, ideal für UI-Aufnahmen)" };
     private readonly CheckBox _audio = new() { Content = "Ton übernehmen" };
+    private readonly CheckBox _copy = new() { Content = "Verlustfrei schneiden (Stream Copy – sehr schnell, Schnitte an Keyframes)" };
     private readonly TextBlock _status = Ui.Label("", 12);
     private readonly Button _go;
     private CancellationTokenSource? _cts;
@@ -52,9 +54,9 @@ public sealed class VideoExportDialog : Window
         new("Benutzerdefiniert", null, 0, 0, null, SizeLimitKind.None),
     };
 
-    public VideoExportDialog(AppServices app, VideoExporter exporter, string src, MediaInfo info, ClipRange clip, bool gif)
+    public VideoExportDialog(AppServices app, VideoExporter exporter, string src, MediaInfo info, ClipRange clip, bool gif, OverlaySpec? overlay = null)
     {
-        _app = app; _exporter = exporter; _src = src; _info = info; _clip = clip; _gif = gif;
+        _app = app; _exporter = exporter; _src = src; _info = info; _clip = clip; _gif = gif; _overlay = overlay;
         Title = gif ? "GIF exportieren" : "MP4 exportieren";
         Width = 600; SizeToContent = SizeToContent.Height; CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -68,7 +70,8 @@ public sealed class VideoExportDialog : Window
         _go = Ui.Button("Speichern unter…", async () => await RunAsync(), accent: true);
         var cancel = Ui.Button("Abbrechen", () => { if (_cts is not null) _cts.Cancel(); else Close(); });
         var body = new StackPanel { Margin = new Thickness(18), Spacing = 10 };
-        body.Children.Add(Ui.Label($"Quelle: {info.Width}×{info.Height}, {info.Fps:0.#} fps · Ausschnitt {clip.KeptDuration:0.0} s{(clip.Cuts.Count > 0 ? $" ({clip.Cuts.Count} Schnitt(e))" : "")}", 12, opacity: 0.75));
+        body.Children.Add(Ui.Label($"Quelle: {info.Width}×{info.Height}, {info.Fps:0.#} fps · Ausschnitt {clip.KeptDuration:0.0} s{(clip.Cuts.Count > 0 ? $" ({clip.Cuts.Count} Schnitt(e))" : "")}" +
+            (overlay is { IsEmpty: false } ? $" · {overlay.Images.Count + overlay.Effects.Count} Annotation(en){(overlay.Zoom.Count > 0 ? ", Zoom" : "")} werden eingebrannt" : ""), 12, opacity: 0.75));
         body.Children.Add(Ui.Field("Profil", _preset));
         body.Children.Add(Ui.Row(Ui.Field("Max. Breite px (0 = original)", _maxW), Ui.Field("Max. Höhe px", _maxH), Ui.Field(gif ? "FPS" : "FPS (0 = original)", _fps)));
         if (gif)
@@ -80,6 +83,11 @@ public sealed class VideoExportDialog : Window
         {
             body.Children.Add(Ui.Row(Ui.Field("Qualität (ohne Limit)", _quality), Ui.Field("Encoder", _encoder)));
             body.Children.Add(_audio);
+            var canCopy = info.CanStreamCopyToMp4 && overlay is not { IsEmpty: false };
+            _copy.IsEnabled = canCopy;
+            ToolTip.SetTip(_copy, canCopy ? "Kein Qualitätsverlust; Größe, FPS und Limit werden dabei nicht verändert." :
+                "Nur für H.264-4:2:0-Videos ohne Annotationen möglich (eigene Aufnahmen sind 4:4:4 und werden neu kodiert).");
+            body.Children.Add(_copy);
         }
         body.Children.Add(Ui.Row(Ui.Field("Max. Dateigröße MB (0 = keine)", _maxMb), Ui.Field("Art des Limits", _limit)));
         body.Children.Add(Ui.Row(gif ? Ui.Field("Mindest-FPS", _minFps) : new Control(), Ui.Field("Mindestbreite px", _minW)));
@@ -123,7 +131,7 @@ public sealed class VideoExportDialog : Window
                     MaxWidth = Pos(_maxW), MaxHeight = Pos(_maxH), Fps = (double)(_fps.Value is > 0 ? _fps.Value : 12),
                     MinFps = (double)(_minFps.Value ?? 6), Colors = (int)(_colors.Value ?? 256), MinColors = 32, MinWidth = (int)(_minW.Value ?? 320),
                     Dither = (string)_dither.SelectedItem!, Loop = _loop.SelectedIndex == 0 ? 0 : -1, DropDuplicates = _dedupe.IsChecked == true,
-                    MaxBytes = MaxBytes(), LimitKind = (SizeLimitKind)Math.Max(0, _limit.SelectedIndex),
+                    MaxBytes = MaxBytes(), LimitKind = (SizeLimitKind)Math.Max(0, _limit.SelectedIndex), Overlay = _overlay,
                 };
                 r = await Task.Run(() => _exporter.ExportGifAsync(_src, path, _clip, s, progress, _cts.Token));
             }
@@ -131,10 +139,12 @@ public sealed class VideoExportDialog : Window
             {
                 var s = new Mp4Settings
                 {
-                    MaxWidth = Pos(_maxW), MaxHeight = Pos(_maxH), Fps = _fps.Value is > 0 ? (double)_fps.Value : null,
+                    MaxWidth = _copy.IsChecked == true ? null : Pos(_maxW), MaxHeight = _copy.IsChecked == true ? null : Pos(_maxH),
+                    Fps = _copy.IsChecked != true && _fps.Value is > 0 ? (double)_fps.Value : null,
                     Quality = (VideoQuality)Math.Max(0, _quality.SelectedIndex),
                     Encoder = _encoder.SelectedIndex switch { 2 => VideoEncoder.Nvenc, 3 => VideoEncoder.Amf, 4 => VideoEncoder.Qsv, _ => VideoEncoder.X264 },
-                    IncludeAudio = _audio.IsChecked == true, MaxBytes = MaxBytes(), LimitKind = (SizeLimitKind)Math.Max(0, _limit.SelectedIndex), MinWidth = (int)(_minW.Value ?? 480),
+                    IncludeAudio = _audio.IsChecked == true, StreamCopy = _copy.IsChecked == true,
+                    MaxBytes = _copy.IsChecked == true ? null : MaxBytes(), LimitKind = (SizeLimitKind)Math.Max(0, _limit.SelectedIndex), MinWidth = (int)(_minW.Value ?? 480), Overlay = _overlay,
                 };
                 r = await Task.Run(() => _exporter.ExportMp4Async(_src, path, _clip, s, progress, _cts.Token));
             }

@@ -159,6 +159,31 @@ public class FfmpegIntegrationTests(Xunit.Abstractions.ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task Stream_copy_cuts_without_reencoding()
+    {
+        if (Tools is not { } t) return;
+        using var d = new TempDir();
+        var src = d.File("h264.mp4");
+        // 4:2:0 H.264 with a keyframe every second
+        var mk = await FfmpegRunner.RunAsync(t.Ffmpeg, new[] { "-hide_banner", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=10", "-c:v", "libx264", "-preset", "ultrafast", "-g", "25", "-pix_fmt", "yuv420p", src });
+        Assert.True(mk.Success, mk.StdErrTail);
+        Assert.True((await MediaProbe.ProbeAsync(t, src)).CanStreamCopyToMp4);
+        var outFile = d.File("copy.mp4");
+        var clip = new ClipRange { Start = 1, End = 9, Cuts = { (3, 5) } };     // keep 1..3 and 5..9 = 6 s
+        var r = await new VideoExporter(t).ExportMp4Async(src, outFile, clip, new Mp4Settings { StreamCopy = true });
+        Assert.True(r.Success, r.Message);
+        Assert.InRange(r.Duration, 5.5, 6.6);
+        Assert.Contains("Verlustfrei", r.Message);
+    }
+
+    [Fact]
+    public void Kept_segments_respect_cuts()
+    {
+        var s = VideoExporter.KeptSegments(new ClipRange { Start = 0, End = 10, Cuts = { (2, 3), (6, 8) } });
+        Assert.Equal(new[] { (0d, 2d), (3d, 6d), (8d, 10d) }, s);
+    }
+
+    [Fact]
     public async Task Frames_can_be_extracted()
     {
         if (Tools is not { } t) return;

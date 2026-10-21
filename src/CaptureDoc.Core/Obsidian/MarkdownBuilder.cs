@@ -7,7 +7,8 @@ namespace CaptureDoc.Core.Obsidian;
 /// <summary>Builds Obsidian-flavoured Markdown (frontmatter, callouts, embeds, checklists).</summary>
 public static class MarkdownBuilder
 {
-    public sealed record ImageRef(string LinkTarget, int? DisplayWidth, string AltText);
+    /// <param name="IsVideo">MP4/WebM embed (Obsidian plays it inline); GIFs count as images.</param>
+    public sealed record ImageRef(string LinkTarget, int? DisplayWidth, string AltText, bool IsVideo = false, string? PosterTarget = null);
 
     public static string Build(Guide guide, GuideTemplate template, IReadOnlyDictionary<Guid, ImageRef> images, LinkStyle links, DateTimeOffset now)
     {

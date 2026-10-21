@@ -10,6 +10,7 @@ public static class SkiaConvert
     public static SKColor ToSk(this ColorRgba c, double opacity) => new(c.R, c.G, c.B, (byte)Math.Clamp(c.A * opacity, 0, 255));
     public static SKRect ToSk(this RectD r) => new((float)r.X, (float)r.Y, (float)r.Right, (float)r.Bottom);
     public static SKPoint ToSk(this PointD p) => new((float)p.X, (float)p.Y);
+    public static SKRect Offset2(this SKRect r, float dx, float dy) { r.Offset(dx, dy); return r; }
 
     /// <summary>Opaque BGRA capture → SKImage (copy).</summary>
     public static SKImage ToSkImage(RawImage raw)

@@ -152,6 +152,7 @@ public sealed class ProjectSession : IDisposable
         var samePath = FilePath is not null && string.Equals(Path.GetFullPath(path), Path.GetFullPath(FilePath), StringComparison.OrdinalIgnoreCase);
         long? expected = force ? null : samePath ? Project.Revision : (File.Exists(path) ? -1 : null);
         if (expected == -1) expected = null; // "save as" over an existing file is confirmed by the file dialog
+        RebaseMediaPaths(path);
         ProjectFile.Save(path, Project, Assets, RenderThumbnail(), expected);
         if (!samePath)
         {
@@ -163,6 +164,20 @@ public sealed class ProjectSession : IDisposable
         IsDirty = false;
         Changed?.Invoke(this, EventArgs.Empty);
         Recovery.Delete(this);
+    }
+
+    /// <summary>Portable path conversion (set by the app at start).</summary>
+    public static Func<string, string> ToPortable { get; set; } = p => p;
+    public static Func<string, string> FromPortable { get; set; } = p => p;
+
+    /// <summary>Video references are relative to the project file – keep them valid on "save as" into another folder.</summary>
+    private void RebaseMediaPaths(string newPath)
+    {
+        foreach (var v in Project.Guide.Steps.Select(s => s.Video).OfType<VideoRef>())
+        {
+            var resolved = ProjectFile.ResolveMedia(FilePath, v.Path, FromPortable);
+            if (resolved is not null) v.Path = ProjectFile.ToProjectRelative(newPath, resolved, ToPortable);
+        }
     }
 
     public bool HasRedactions => Project.Pages.Any(PageOperations.HasRedactions);

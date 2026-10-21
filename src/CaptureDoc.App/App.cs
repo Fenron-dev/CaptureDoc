@@ -16,7 +16,7 @@ namespace CaptureDoc.App;
 
 public sealed class App : Application
 {
-    public static EventWaitHandle? InstanceSignal { get; set; }
+    public static SingleInstance? Instance { get; set; }
     public static string[] StartupArgs { get; set; } = Array.Empty<string>();
     public static new App Current => (App)Application.Current!;
 
@@ -74,24 +74,51 @@ public sealed class App : Application
         Services = new AppServices(env);
         Log.Info($"Start {ProjectFile.AppVersion} root={env.AppRoot} data={env.DataRoot} runtime={(OperatingSystem.IsWindows() ? CaptureDoc.Platform.Windows.NativeRuntimeBootstrap.RuntimeDirectory : null) ?? "default"}");
         Recovery.Dir = env.RecoveryDir;
+        ProjectSession.ToPortable = env.ToPortablePath;
+        ProjectSession.FromPortable = env.FromPortablePath;
         Capture = new CaptureController(Services);
         Recording = new Video.RecordingController(Services);
         ApplyTheme();
         SetupTray();
 
         _quick = new QuickCaptureWindow(Services);
+        AppServices.MonitorProvider = () => (_quick?.Screens.All ?? (IReadOnlyList<Avalonia.Platform.Screen>)Array.Empty<Avalonia.Platform.Screen>())
+            .Select(s => new Core.Platform.MonitorInfo(s.DisplayName ?? "", new Core.Model.PixelRect(s.Bounds.X, s.Bounds.Y, s.Bounds.Width, s.Bounds.Height),
+                new Core.Model.PixelRect(s.WorkingArea.X, s.WorkingArea.Y, s.WorkingArea.Width, s.WorkingArea.Height), s.Scaling, s.IsPrimary)).ToList();
         _quick.Opened += (_, _) => Log.Info($"UI ready {(DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime).TotalMilliseconds:0} ms after process start");
         RegisterHotkeys();
         if (!Services.Settings.Platform.StartMinimizedToTray || !HasTray) _quick.Show();
 
-        StartInstanceListener();
+        if (Instance is not null)
+        {
+            Instance.CommandReceived += (_, args) => Dispatcher.UIThread.Post(async () => await RunCommandAsync(args, fromOtherInstance: true));
+            Instance.Listen();
+        }
 
         if (Services.StartupProblems.Count > 0)
             await Dialogs.InfoAsync(_quick.IsVisible ? _quick : null, "Hinweise", string.Join("\n\n", Services.StartupProblems));
 
         await OfferRecoveryAsync();
 
-        foreach (var arg in StartupArgs.Where(File.Exists)) await OpenPathAsync(arg, _quick);
+        await RunCommandAsync(StartupArgs, fromOtherInstance: false);
+    }
+
+    /// <summary>Executes command-line arguments (also those forwarded by a second start).</summary>
+    private async Task RunCommandAsync(IReadOnlyList<string> args, bool fromOtherInstance)
+    {
+        var cmd = StartupCommand.Parse(args);
+        if (cmd.Capture is { } c)
+        {
+            if (c == "video") await Recording.StartAsync();
+            else await Capture.CaptureAsync(c switch
+            {
+                "window" => CaptureMode.Window, "active" => CaptureMode.ActiveWindow, "screen" => CaptureMode.FullScreen,
+                "monitor" => CaptureMode.Monitor, "last" => CaptureMode.LastRegion, _ => CaptureMode.Region,
+            });
+        }
+        if (cmd.Studio) ShowStudio();
+        foreach (var f in cmd.Files.Where(File.Exists)) await OpenPathAsync(f, _quick);
+        if (fromOtherInstance && (cmd.Show || (cmd.Capture is null && !cmd.Studio && cmd.Files.Count == 0))) ShowQuick();
     }
 
     public void ApplyTheme()
@@ -143,6 +170,7 @@ public sealed class App : Application
             Item("Letzter Bereich", () => Capture.CaptureAsync(CaptureMode.LastRegion));
             Item("Bereich in 5 s", () => Capture.CaptureAsync(CaptureMode.Region, 5));
             Item("● Video aufnehmen", () => Recording.StartAsync());
+            Item("Serienaufnahme → Anleitung", () => ShowStudio().CaptureSeriesAsync());
             menu.Items.Add(new NativeMenuItemSeparator());
             Item("Quick Capture anzeigen", () => { ShowQuick(); return Task.CompletedTask; });
             Item("Documentation Studio", () => { ShowStudio(); return Task.CompletedTask; });
@@ -160,20 +188,6 @@ public sealed class App : Application
             Log.Warn("Tray unavailable: " + ex.Message);
             HasTray = false;
         }
-    }
-
-    private void StartInstanceListener()
-    {
-        var signal = InstanceSignal;
-        if (signal is null) return;
-        var t = new Thread(() =>
-        {
-            while (!IsExiting)
-            {
-                if (signal.WaitOne(1000)) Dispatcher.UIThread.Post(ShowQuick);
-            }
-        }) { IsBackground = true, Name = "CaptureDoc instance listener" };
-        t.Start();
     }
 
     public void ShowQuick()

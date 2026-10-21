@@ -12,8 +12,10 @@ public sealed class AppServices : IDisposable
     public SettingsStore Settings { get; }
     public ExportProfileStore Profiles { get; }
     public TemplateStore Templates { get; }
-    public IScreenCaptureService Capture { get; }
+    public IScreenCaptureService Capture { get; } = new UnsupportedCaptureService();
     public IClipboardImageService? Clipboard { get; }
+    /// <summary>Monitor list from the UI toolkit (needed on macOS/Linux where the capture tools cannot list displays).</summary>
+    public static Func<IReadOnlyList<MonitorInfo>> MonitorProvider { get; set; } = () => Array.Empty<MonitorInfo>();
     public IGlobalHotkeyService? Hotkeys { get; }
     /// <summary>External ffmpeg for video/GIF (null = not found).</summary>
     public CaptureDoc.Media.FfmpegTools? Ffmpeg { get; private set; }
@@ -39,14 +41,18 @@ public sealed class AppServices : IDisposable
             Clipboard = new CaptureDoc.Platform.Windows.WindowsClipboard();
             Hotkeys = new CaptureDoc.Platform.Windows.WindowsHotkeys();
         }
-        else
-        {
-            // macOS (ScreenCaptureKit) and Linux (Portal/PipeWire) are planned – see DevVault Platform-Integration.
-            Capture = new UnsupportedCaptureService();
-            StartupProblems.Add("Bildschirmaufnahme ist auf diesem Betriebssystem noch nicht implementiert. Editor, Projekte und Export funktionieren.");
-        }
-
         RefreshFfmpeg();
+        if (!OperatingSystem.IsWindows())
+        {
+            // macOS/Linux: system tools (screencapture / grim / gnome-screenshot / spectacle / x11grab). Untested – see DevVault.
+            Capture = new CaptureDoc.Platform.Unix.UnixCaptureService(() => MonitorProvider(), Ffmpeg?.Ffmpeg);
+            Clipboard = new CaptureDoc.Platform.Unix.UnixClipboard();
+            if (!Capture.IsSupported)
+                StartupProblems.Add(OperatingSystem.IsLinux()
+                    ? "Kein Screenshot-Werkzeug gefunden. Wayland: grim, gnome-screenshot oder spectacle installieren. X11: ImageMagick (import) oder FFmpeg."
+                    : "Bildschirmaufnahme ist auf diesem System nicht verfügbar.");
+            StartupProblems.Add("Globale Tastenkürzel gibt es unter macOS/Linux noch nicht. Tipp: im System ein Kürzel auf „CaptureDoc --capture region“ legen (auch: window, screen, video).");
+        }
         Log.Info(Ffmpeg is null ? "ffmpeg not found" : $"ffmpeg: {Ffmpeg.Source}");
         var removed = env.CleanupTemp(TimeSpan.FromDays(1));
         if (removed > 0) Log.Info($"Removed {removed} stale temp entries");

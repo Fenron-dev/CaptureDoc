@@ -17,7 +17,7 @@ namespace CaptureDoc.App.Editor;
 public enum Tool
 {
     Select, Arrow, Line, Rectangle, Ellipse, Text, InfoBox, Bubble, Step,
-    Highlight, Blackout, Pixelate, Blur, Spotlight, Magnifier, Freehand, Crop,
+    Highlight, Blackout, Pixelate, Blur, Spotlight, Magnifier, Freehand, Crop, Pipette,
 }
 
 /// <summary>
@@ -35,6 +35,28 @@ public sealed class EditorCanvas : Control
     private int _resizeHandle = -1;
     private Layer? _creating;
     private RectD? _crop;
+    // drag cache: everything below the dragged layer is rendered once (4K: ~150 ms → a few ms per move)
+    private SKImage? _dragCache;
+    private int _dragCacheFrom = -1;
+
+    private void BeginDragCache()
+    {
+        EndDragCache();
+        var ids = Selection.ToHashSet();
+        var idx = -1;
+        for (var i = 0; i < Page.Layers.Count; i++)
+            if (ids.Contains(Page.Layers[i].Id) || (Page.Layers[i] is GroupLayer g && g.AllChildren().Any(c => ids.Contains(c.Id)))) { idx = i; break; }
+        if (idx <= 0 || (long)Page.Width * Page.Height < 1_000_000) return; // small images are fast anyway
+        _dragCache = Session.Renderer.RenderBelow(Page, idx);
+        _dragCacheFrom = idx;
+    }
+
+    private void EndDragCache()
+    {
+        _dragCache?.Dispose();
+        _dragCache = null;
+        _dragCacheFrom = -1;
+    }
 
     private enum DragState { None, Move, Resize, Create, Crop }
 
@@ -49,6 +71,8 @@ public sealed class EditorCanvas : Control
     public event EventHandler? DocumentChanged;
     public event EventHandler<TextLayer>? TextEditRequested;
     public event EventHandler? ViewChanged;
+    /// <summary>Colour picked with the pipette tool.</summary>
+    public event EventHandler<ColorRgba>? ColorPicked;
     /// <summary>Raised after every undo step, undo or redo (not during drags).</summary>
     public event EventHandler? HistoryChanged;
 
@@ -199,7 +223,11 @@ public sealed class EditorCanvas : Control
         {
             var info = new SKImageInfo(Page.Width, Page.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
             using var surface = SKSurface.Create(info, fb.Address, fb.RowBytes);
-            if (surface is not null) Session.Renderer.Render(surface, Page, 1.0, EditingTextLayer);
+            if (surface is not null)
+            {
+                if (_dragCache is not null && _drag != DragState.None) Session.Renderer.RenderFrom(surface, Page, _dragCache, _dragCacheFrom, EditingTextLayer);
+                else Session.Renderer.Render(surface, Page, 1.0, EditingTextLayer);
+            }
         }
         _renderedRevision = _docRevision;
     }
@@ -220,6 +248,18 @@ public sealed class EditorCanvas : Control
         _dragStart = _dragLast = p;
         e.Pointer.Capture(this);
 
+        if (Tool == Tool.Pipette)
+        {
+            using var flat = RenderFlattened();
+            var x = (int)Math.Clamp(p.X, 0, flat.Width - 1); var y = (int)Math.Clamp(p.Y, 0, flat.Height - 1);
+            var px = new byte[4];
+            var info = new SKImageInfo(1, 1, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+            unsafe { fixed (byte* b = px) flat.ReadPixels(info, (nint)b, 4, x, y); }
+            ColorPicked?.Invoke(this, new ColorRgba(px[0], px[1], px[2], 255));
+            e.Pointer.Capture(null);
+            return;
+        }
+
         if (Tool == Tool.Crop)
         {
             _crop = new RectD(p.X, p.Y, 0, 0);
@@ -239,6 +279,7 @@ public sealed class EditorCanvas : Control
                     _resizeOrigin = sel is BoxLayer bx ? bx.Rect.Normalize() : sel.Bounds;
                     History.BeginTransaction("Größe ändern");
                     _drag = DragState.Resize;
+                    BeginDragCache();
                     return;
                 }
             }
@@ -254,6 +295,7 @@ public sealed class EditorCanvas : Control
             if (e.ClickCount == 2 && hit is TextLayer tl) { TextEditRequested?.Invoke(this, tl); return; }
             History.BeginTransaction("Verschieben");
             _drag = DragState.Move;
+            BeginDragCache();
             return;
         }
 
@@ -264,6 +306,7 @@ public sealed class EditorCanvas : Control
         Page.Layers.Add(_creating);
         Select(new[] { _creating.Id });
         _drag = DragState.Create;
+        BeginDragCache();
         PageOperations.RenumberSteps(Page);
         NotifyDocumentChanged();
     }
@@ -307,6 +350,7 @@ public sealed class EditorCanvas : Control
         base.OnPointerReleased(e);
         e.Pointer.Capture(null);
         var state = _drag; _drag = DragState.None;
+        EndDragCache();
         switch (state)
         {
             case DragState.Move:
@@ -393,7 +437,7 @@ public sealed class EditorCanvas : Control
         Tool.Arrow => "Pfeil", Tool.Line => "Linie", Tool.Rectangle => "Rechteck", Tool.Ellipse => "Ellipse",
         Tool.Text => "Text", Tool.InfoBox => "Infobox", Tool.Bubble => "Sprechblase", Tool.Step => "Schritt",
         Tool.Highlight => "Hervorhebung", Tool.Blackout => "Schwärzung", Tool.Pixelate => "Verpixeln", Tool.Blur => "Weichzeichnen",
-        Tool.Spotlight => "Spotlight", Tool.Magnifier => "Lupe", Tool.Freehand => "Freihand", Tool.Crop => "Zuschneiden", _ => "Auswahl",
+        Tool.Spotlight => "Spotlight", Tool.Magnifier => "Lupe", Tool.Freehand => "Freihand", Tool.Crop => "Zuschneiden", Tool.Pipette => "Farbpipette", _ => "Auswahl",
     };
 
     private Layer CreateLayer(Tool tool, PointD p)

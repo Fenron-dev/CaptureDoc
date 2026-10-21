@@ -37,6 +37,9 @@ public sealed class Mp4Settings
     public long? MaxBytes { get; set; }
     public SizeLimitKind LimitKind { get; set; } = SizeLimitKind.None;
     public int MinWidth { get; set; } = 480;
+    public OverlaySpec? Overlay { get; set; }
+    /// <summary>Copy the kept sections without re-encoding (cuts snap to keyframes). Only when nothing else changes.</summary>
+    public bool StreamCopy { get; set; }
 }
 
 public sealed class GifSettings
@@ -56,6 +59,7 @@ public sealed class GifSettings
     public bool DropDuplicates { get; set; } = true;
     public long? MaxBytes { get; set; }
     public SizeLimitKind LimitKind { get; set; } = SizeLimitKind.None;
+    public OverlaySpec? Overlay { get; set; }
 }
 
 public sealed record VideoExportResult(bool Success, string? Path, long Bytes, int Width, int Height, double Duration, string Message);
@@ -70,7 +74,7 @@ public sealed class VideoExporter
 
     // ------------------------------------------------------------------ GIF
 
-    internal static string GifFilter(ClipRange c, GifParams p, GifSettings s)
+    internal static string GifFilter(ClipRange c, GifParams p, GifSettings s, string? overlayChain = null)
     {
         var parts = new List<string>();
         if (c.SelectExpression() is { } sel) parts.Add($"select='{sel}',setpts=N/FRAME_RATE/TB");
@@ -78,7 +82,8 @@ public sealed class VideoExporter
         if (s.DropDuplicates) parts.Add("mpdecimate=hi=512:lo=256:frac=0.5");
         parts.Add($"scale={p.Width}:{p.Height}:flags=lanczos");
         parts.Add("split[a][b];[a]palettegen=max_colors=" + p.Colors + ":stats_mode=diff[p];[b][p]paletteuse=dither=" + s.Dither + ":diff_mode=rectangle");
-        return string.Join(",", parts);
+        var chain = string.Join(",", parts);
+        return overlayChain is null ? chain : overlayChain + ";[ov]" + chain;
     }
 
     public async Task<VideoExportResult> ExportGifAsync(string src, string output, ClipRange clip, GifSettings s, IProgress<string>? progress = null, CancellationToken ct = default)
@@ -91,17 +96,24 @@ public sealed class VideoExporter
             var req = new GifOptimizer.Request(info.Width, info.Height, s.MaxWidth, s.MaxHeight, Math.Min(s.Fps, Math.Max(1, info.Fps)), s.MinFps,
                 s.Colors, s.MinColors, s.MinWidth, s.MaxBytes, s.MaxBytes is null ? SizeLimitKind.None : s.LimitKind);
             string? error = null;
-            var result = GifOptimizer.Optimize(req, (p, attempt) =>
+            // the optimizer calls ffmpeg synchronously → always on the thread pool, never on a UI thread
+            var result = await Task.Run(() => GifOptimizer.Optimize(req, (p, attempt) =>
             {
                 ct.ThrowIfCancellationRequested();
                 progress?.Report($"GIF-Versuch {attempt + 1}: {p.Width}×{p.Height}, {p.Fps:0.#} fps, {p.Colors} Farben …");
                 var file = Path.Combine(work, $"try-{attempt}.gif");
                 var args = SeekArgs(clip, src);
-                args.AddRange(new[] { "-an", "-filter_complex", GifFilter(clip, p, s), "-fps_mode", s.DropDuplicates ? "vfr" : "cfr", "-loop", s.Loop.ToString(), file });
+                string? ovChain = null;
+                if (s.Overlay is { IsEmpty: false } ov)
+                {
+                    args.AddRange(ov.InputArgs());
+                    ovChain = ov.BuildFilter("[0:v]", info.Width, info.Height, info.Fps, clip.Start);
+                }
+                args.AddRange(new[] { "-an", "-filter_complex", GifFilter(clip, p, s, ovChain), "-fps_mode", s.DropDuplicates ? "vfr" : "cfr", "-loop", s.Loop.ToString(), file });
                 var r = RunAsync(_t.Ffmpeg, args, ct).GetAwaiter().GetResult();
                 if (!r.Success) { error = r.StdErrTail; return long.MaxValue; }
                 return new FileInfo(file).Length;
-            });
+            }), ct);
             if (error is not null && result.Bytes == long.MaxValue) return new(false, null, 0, 0, 0, 0, "GIF-Export fehlgeschlagen: " + error);
             if (!result.Success && s.LimitKind == SizeLimitKind.Hard && s.MaxBytes is not null)
                 return new(false, null, result.Bytes, result.Parameters.Width, result.Parameters.Height, clip.KeptDuration, result.Message);
@@ -148,6 +160,12 @@ public sealed class VideoExporter
     public async Task<VideoExportResult> ExportMp4Async(string src, string output, ClipRange clip, Mp4Settings s, IProgress<string>? progress = null, CancellationToken ct = default)
     {
         var info = await MediaProbe.ProbeAsync(_t, src, ct);
+        if (s.StreamCopy)
+        {
+            if (!info.CanStreamCopyToMp4 || s.Overlay is { IsEmpty: false } || s.MaxWidth is not null || s.MaxHeight is not null || s.Fps is not null || s.MaxBytes is not null)
+                return new(false, null, 0, info.Width, info.Height, 0, "Verlustfreies Schneiden ist nur für H.264-4:2:0-Videos ohne Annotationen, Skalierung, FPS-Änderung oder Größenlimit möglich.");
+            return await StreamCopyAsync(src, output, clip, s.IncludeAudio && info.HasAudio, progress, ct);
+        }
         var duration = Math.Max(0.1, clip.KeptDuration);
         var (w, h) = SizeOptimizer.FitDimensions(info.Width, info.Height, s.MaxWidth, s.MaxHeight, 1.0);
         var audio = s.IncludeAudio && info.HasAudio;
@@ -177,7 +195,13 @@ public sealed class VideoExporter
             if (clip.SelectExpression() is { } sel) vf.Add($"select='{sel}',setpts=N/FRAME_RATE/TB");
             if (s.Fps is { } f) vf.Add($"fps={F(f)}");
             vf.Add($"scale={w}:{h}:flags=lanczos");
-            args.AddRange(new[] { "-vf", string.Join(",", vf) });
+            if (s.Overlay is { IsEmpty: false } ov)
+            {
+                args.AddRange(ov.InputArgs());
+                args.AddRange(new[] { "-filter_complex", ov.BuildFilter("[0:v]", info.Width, info.Height, info.Fps, clip.Start) + ";[ov]" + string.Join(",", vf) + "[vout]", "-map", "[vout]" });
+                if (audio) args.AddRange(new[] { "-map", "0:a?" });
+            }
+            else args.AddRange(new[] { "-vf", string.Join(",", vf) });
             args.AddRange(EncoderArgs(encoder, s.Quality, bitrate));
             if (audio)
             {
@@ -210,6 +234,53 @@ public sealed class VideoExporter
         return new(false, null, 0, w, h, duration, $"Größenlimit {SizeOptimizer.FormatBytes(s.MaxBytes ?? 0)} mit {s.MinWidth} px Mindestbreite nicht erreichbar. Clip kürzen oder Limit erhöhen.");
     }
 
+    /// <summary>Kept sections of a clip (start..end minus cuts), in source seconds.</summary>
+    internal static List<(double From, double To)> KeptSegments(ClipRange c)
+    {
+        var segs = new List<(double, double)>();
+        var t = c.Start;
+        foreach (var (a, b) in c.Cuts.Where(x => x.To > c.Start && x.From < c.End).OrderBy(x => x.From))
+        {
+            if (a > t) segs.Add((t, Math.Min(a, c.End)));
+            t = Math.Max(t, b);
+        }
+        if (c.End > t) segs.Add((t, c.End));
+        return segs.Where(s => s.Item2 - s.Item1 > 0.05).ToList();
+    }
+
+    /// <summary>LosslessCut approach: copy each kept section (-c copy), then concat. No quality loss; cut points snap to keyframes.</summary>
+    private async Task<VideoExportResult> StreamCopyAsync(string src, string output, ClipRange clip, bool audio, IProgress<string>? progress, CancellationToken ct)
+    {
+        var segs = KeptSegments(clip);
+        if (segs.Count == 0) return new(false, null, 0, 0, 0, 0, "Nach den Schnitten bleibt nichts übrig.");
+        var work = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(output))!, $".copy-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(work);
+        try
+        {
+            var parts = new List<string>();
+            for (var i = 0; i < segs.Count; i++)
+            {
+                progress?.Report($"Kopiere Abschnitt {i + 1}/{segs.Count} (ohne Neukodierung) …");
+                var part = Path.Combine(work, $"part-{i:000}.mp4");
+                var args = new List<string> { "-hide_banner", "-y", "-ss", F(segs[i].From), "-to", F(segs[i].To), "-i", src, "-map", "0:v:0" };
+                if (audio) args.AddRange(new[] { "-map", "0:a:0?" });
+                args.AddRange(new[] { "-c", "copy", "-avoid_negative_ts", "make_zero", part });
+                var r = await RunAsync(_t.Ffmpeg, args, ct);
+                if (!r.Success) return new(false, null, 0, 0, 0, 0, "Kopieren fehlgeschlagen: " + r.StdErrTail);
+                parts.Add(part);
+            }
+            var list = Path.Combine(work, "list.txt");
+            await File.WriteAllLinesAsync(list, parts.Select(p => "file '" + p.Replace("\\", "/").Replace("'", "'\\''") + "'"), ct);
+            var c = await RunAsync(_t.Ffmpeg, new[] { "-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", "-movflags", "+faststart", output }, ct);
+            if (!c.Success) return new(false, null, 0, 0, 0, 0, "Zusammenfügen fehlgeschlagen: " + c.StdErrTail);
+            return await VerifyAsync(output, null, SizeLimitKind.None, "Verlustfrei kopiert – Schnittpunkte liegen auf Keyframes.", ct);
+        }
+        finally
+        {
+            try { Directory.Delete(work, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
     /// <summary>Re-reads the written file: real size, dimensions and duration.</summary>
     private async Task<VideoExportResult> VerifyAsync(string file, long? maxBytes, SizeLimitKind kind, string note, CancellationToken ct)
     {
@@ -225,6 +296,36 @@ public sealed class VideoExporter
                   (maxBytes is { } m && kind != SizeLimitKind.None ? (met ? $" – Limit {SizeOptimizer.FormatBytes(m)} eingehalten (geprüft)." : $" – Limit {SizeOptimizer.FormatBytes(m)} NICHT eingehalten.") : ".") +
                   (note is "OK" ? "" : " " + note);
         return new(true, file, len, info.Width, info.Height, info.Duration, msg);
+    }
+
+    /// <summary>
+    /// Applies trim and cuts and writes a new, shorter working file in the recording quality
+    /// (H.264 4:4:4, MKV). The source file is not touched.
+    /// </summary>
+    public async Task<string> RenderEditedAsync(string src, string output, ClipRange clip, IProgress<string>? progress = null, CancellationToken ct = default, OverlaySpec? overlay = null)
+    {
+        var info = await MediaProbe.ProbeAsync(_t, src, ct);
+        var args = SeekArgs(clip, src);
+        var sel = clip.SelectExpression();
+        if (overlay is { IsEmpty: false })
+        {
+            args.AddRange(overlay.InputArgs());
+            var tail = sel is not null ? $";[ov]select='{sel}',setpts=N/FRAME_RATE/TB[vout]" : ";[ov]null[vout]";
+            args.AddRange(new[] { "-filter_complex", overlay.BuildFilter("[0:v]", info.Width, info.Height, info.Fps, clip.Start) + tail, "-map", "[vout]" });
+            if (info.HasAudio) args.AddRange(new[] { "-map", "0:a?" });
+        }
+        else if (sel is not null) args.AddRange(new[] { "-vf", $"select='{sel}',setpts=N/FRAME_RATE/TB" });
+        args.AddRange(new[] { "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv444p" });
+        if (info.HasAudio)
+        {
+            if (sel is not null) args.AddRange(new[] { "-af", $"aselect='{sel}',asetpts=N/SR/TB" });
+            args.AddRange(new[] { "-c:a", "aac", "-b:a", "160k" });
+        }
+        args.Add(output);
+        var duration = Math.Max(0.1, clip.KeptDuration);
+        var r = await RunAsync(_t.Ffmpeg, args, ct, t => progress?.Report($"Schneide … {Math.Min(100, t / duration * 100):0} %"));
+        if (!r.Success) throw new InvalidOperationException("Schneiden fehlgeschlagen: " + r.StdErrTail);
+        return output;
     }
 
     // ------------------------------------------------------------------ frames

@@ -149,6 +149,15 @@ public static class PageOperations
         return g.Children;
     }
 
+    /// <summary>Adds a transparent margin, a drop shadow and a thin border around the screenshot (non-destructive).</summary>
+    public static void AddFrameAndShadow(Page page, int margin = 32, double cornerRadius = 8)
+    {
+        if (page.Layers.FirstOrDefault() is not ImageLayer { IsBackground: true } bg) return;
+        ResizeCanvas(page, page.Width + 2 * margin, page.Height + 2 * margin);
+        page.Background = ColorRgba.Transparent;
+        bg.Shadow = true; bg.BorderWidth = 1; bg.CornerRadius = cornerRadius;
+    }
+
     /// <summary>Default display name, e.g. "Pfeil 3".</summary>
     public static string NextName(Page page, Layer layer)
     {

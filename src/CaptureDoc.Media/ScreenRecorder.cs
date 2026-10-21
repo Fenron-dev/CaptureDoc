@@ -47,6 +47,10 @@ public sealed class ScreenRecorder : IAsyncDisposable
         Directory.CreateDirectory(options.WorkDirectory);
     }
 
+    /// <summary>macOS: avfoundation device index of the screen and its origin (set by the app before recording).</summary>
+    public static int MacScreenDevice { get; set; } = 1;
+    public static (int X, int Y) MacScreenOrigin { get; set; }
+
     internal static List<string> BuildSegmentArgs(PixelRect r, int fps, bool mouse, string? mic, string output)
     {
         var a = new List<string> { "-hide_banner", "-loglevel", "warning", "-y" };
@@ -59,7 +63,20 @@ public sealed class ScreenRecorder : IAsyncDisposable
             });
             if (mic is not null) a.AddRange(new[] { "-thread_queue_size", "512", "-f", "dshow", "-i", "audio=" + mic });
         }
-        else throw new PlatformNotSupportedException("Videoaufnahme ist auf diesem Betriebssystem noch nicht implementiert (geplant: ScreenCaptureKit / PipeWire).");
+        else if (OperatingSystem.IsMacOS())
+        {
+            // avfoundation captures a whole screen in pixels; the area is cropped. Mouse clicks are highlighted by macOS.
+            a.AddRange(new[] { "-f", "avfoundation", "-capture_cursor", mouse ? "1" : "0", "-capture_mouse_clicks", "1", "-framerate", fps.ToString(), "-i", $"{MacScreenDevice}:{(mic is null ? "none" : mic)}" });
+            a.AddRange(new[] { "-vf", $"crop={r.Width}:{r.Height}:{r.X - MacScreenOrigin.X}:{r.Y - MacScreenOrigin.Y}" });
+        }
+        else
+        {
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+                throw new PlatformNotSupportedException("Videoaufnahme unter Wayland ist noch nicht implementiert (geplant: XDG-Portal + PipeWire). Unter X11/XWayland funktioniert x11grab.");
+            var display = Environment.GetEnvironmentVariable("DISPLAY") ?? ":0";
+            a.AddRange(new[] { "-f", "x11grab", "-draw_mouse", mouse ? "1" : "0", "-framerate", fps.ToString(), "-video_size", $"{r.Width}x{r.Height}", "-i", $"{display}+{r.X},{r.Y}" });
+            if (mic is not null) a.AddRange(new[] { "-f", "pulse", "-i", mic });
+        }
 
         a.AddRange(new[] { "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-pix_fmt", "yuv444p", "-g", (fps * 2).ToString() });
         if (mic is not null) a.AddRange(new[] { "-c:a", "aac", "-b:a", "160k" });

@@ -54,7 +54,38 @@ public static class ProjectFile
     public static string AppVersion { get; set; } = typeof(ProjectFile).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
     /// <summary>Registered migrations, keyed by source version.</summary>
-    public static readonly List<IProjectMigration> Migrations = new();
+    public static readonly List<IProjectMigration> Migrations = new() { new V1ToV2() };
+
+    /// <summary>v2 only adds optional properties (video references); v1 files stay valid.</summary>
+    private sealed class V1ToV2 : IProjectMigration
+    {
+        public int FromVersion => 1;
+        public JsonNode Migrate(JsonNode project) => project;
+    }
+
+    /// <summary>Stores a video path relative to the project folder when possible, else portable/absolute.</summary>
+    public static string ToProjectRelative(string? projectFile, string videoPath, Func<string, string> portable)
+    {
+        var full = Path.GetFullPath(videoPath);
+        if (projectFile is not null)
+        {
+            var rel = Path.GetRelativePath(Path.GetDirectoryName(Path.GetFullPath(projectFile))!, full);
+            if (!rel.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(rel)) return rel.Replace('\\', '/');
+        }
+        return portable(full);
+    }
+
+    /// <summary>Resolves a stored video path; tries project folder, portable root, then the literal path.</summary>
+    public static string? ResolveMedia(string? projectFile, string stored, Func<string, string> fromPortable)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return null;
+        var candidates = new List<string>();
+        if (stored.StartsWith("./", StringComparison.Ordinal)) candidates.Add(fromPortable(stored));
+        else if (!Path.IsPathRooted(stored) && projectFile is not null)
+            candidates.Add(Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(projectFile))!, stored.Replace('/', Path.DirectorySeparatorChar))));
+        candidates.Add(stored);
+        return candidates.FirstOrDefault(File.Exists);
+    }
 
     /// <param name="expectedRevision">Revision the caller loaded; null = skip conflict check (new file / force).</param>
     public static void Save(string path, CaptureProject project, AssetStore assets, byte[]? thumbnailPng = null, long? expectedRevision = null)
@@ -137,7 +168,8 @@ public static class ProjectFile
     public static HashSet<string> CollectUsedAssets(CaptureProject project)
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var p in project.Pages)
+        var pages = project.Pages.Concat(project.Guide.Steps.Select(s => s.Video?.Overlay?.Page).OfType<Page>());
+        foreach (var p in pages)
             foreach (var l in p.AllLayers().OfType<ImageLayer>())
                 if (!string.IsNullOrEmpty(l.AssetId)) set.Add(l.AssetId);
         return set;

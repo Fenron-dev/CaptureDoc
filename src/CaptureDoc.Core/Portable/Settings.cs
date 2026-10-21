@@ -18,6 +18,10 @@ public sealed class SharedSettings
     public string DefaultExportProfile { get; set; } = "documentation-png";
     public string FileNamePattern { get; set; } = "Screenshot_{yyyy-MM-dd_HH-mm-ss}";
     public ToolStyle Style { get; set; } = new();
+    /// <summary>User-saved annotation styles (reusable design styles).</summary>
+    public List<ToolStyle> StylePresets { get; set; } = new();
+    public int SeriesCount { get; set; } = 10;
+    public double SeriesIntervalSeconds { get; set; } = 2;
     public bool WarnOnRedactedProjectSave { get; set; } = true;
     public int AutoSaveSeconds { get; set; } = 60;
 }
@@ -31,6 +35,16 @@ public sealed class ToolStyle
     public string FontFamily { get; set; } = "Segoe UI";
     public double StepRadius { get; set; } = 20;
     public bool Shadow { get; set; } = true;
+    public string Name { get; set; } = "";
+
+    public static IReadOnlyList<ToolStyle> BuiltIn { get; } = new List<ToolStyle>
+    {
+        new() { Name = "Standard (Rot)" },
+        new() { Name = "Dezent (Blau)", Color = ColorRgba.Blue, StrokeWidth = 3, FontSize = 22, Shadow = false },
+        new() { Name = "Kräftig (Orange)", Color = new ColorRgba(255, 120, 0), StrokeWidth = 6, FontSize = 32, StepRadius = 24 },
+        new() { Name = "Präsentation (Grün, groß)", Color = new ColorRgba(40, 170, 70), StrokeWidth = 7, FontSize = 40, StepRadius = 30 },
+        new() { Name = "Dunkel / Kontrast", Color = ColorRgba.Black, StrokeWidth = 4, FontSize = 26, Shadow = false },
+    };
 }
 
 public sealed class HotkeySetting
@@ -55,6 +69,8 @@ public sealed class PlatformSettings
     public int RecordingFps { get; set; } = 30;
     public int RecordingCountdown { get; set; } = 3;
     public bool RecordCursor { get; set; } = true;
+    /// <summary>Mark mouse clicks as editable ring annotations in the video editor.</summary>
+    public bool HighlightClicks { get; set; } = true;
     public bool RecordMicrophone { get; set; }
     public string? MicrophoneDevice { get; set; }
     public bool IncludeCursor { get; set; }

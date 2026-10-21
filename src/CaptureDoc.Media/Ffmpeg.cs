@@ -90,7 +90,11 @@ public static class FfmpegRunner
     public static string F(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
 }
 
-public sealed record MediaInfo(double Duration, int Width, int Height, double Fps, bool HasAudio, string VideoCodec);
+public sealed record MediaInfo(double Duration, int Width, int Height, double Fps, bool HasAudio, string VideoCodec, string PixelFormat = "")
+{
+    /// <summary>Stream copy into MP4 is possible without re-encoding (widely playable H.264 4:2:0).</summary>
+    public bool CanStreamCopyToMp4 => VideoCodec == "h264" && PixelFormat is "yuv420p" or "yuvj420p";
+}
 
 public static class MediaProbe
 {
@@ -99,12 +103,12 @@ public static class MediaProbe
         using var ms = new MemoryStream();
         var r = await FfmpegRunner.RunAsync(tools.Ffprobe, new[]
         {
-            "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,duration",
+            "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,duration,pix_fmt",
             "-of", "json", file,
         }, ct, stdout: ms);
         if (!r.Success) throw new InvalidDataException("Datei konnte nicht gelesen werden: " + r.StdErrTail);
         using var doc = JsonDocument.Parse(ms.ToArray());
-        double dur = 0; int w = 0, h = 0; double fps = 0; var audio = false; var codec = "";
+        double dur = 0; int w = 0, h = 0; double fps = 0; var audio = false; var codec = ""; var pix = "";
         if (doc.RootElement.TryGetProperty("format", out var fmt) && fmt.TryGetProperty("duration", out var d))
             double.TryParse(d.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out dur);
         foreach (var s in doc.RootElement.GetProperty("streams").EnumerateArray())
@@ -114,12 +118,13 @@ public static class MediaProbe
             if (type != "video" || w > 0) continue;
             w = s.GetProperty("width").GetInt32(); h = s.GetProperty("height").GetInt32();
             codec = s.TryGetProperty("codec_name", out var c) ? c.GetString() ?? "" : "";
+            pix = s.TryGetProperty("pix_fmt", out var pf) ? pf.GetString() ?? "" : "";
             fps = ParseRate(s.TryGetProperty("avg_frame_rate", out var a) ? a.GetString() : null);
             if (fps <= 0) fps = ParseRate(s.TryGetProperty("r_frame_rate", out var rr) ? rr.GetString() : null);
             if (dur <= 0 && s.TryGetProperty("duration", out var sd)) double.TryParse(sd.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out dur);
         }
         if (w == 0) throw new InvalidDataException("Keine Videospur gefunden.");
-        return new MediaInfo(dur, w, h, fps, audio, codec);
+        return new MediaInfo(dur, w, h, fps, audio, codec, pix);
     }
 
     internal static double ParseRate(string? r)
@@ -129,6 +134,20 @@ public static class MediaProbe
         if (parts.Length == 2 && double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var n) &&
             double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var dd) && dd > 0) return n / dd;
         return double.TryParse(r, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0;
+    }
+
+    /// <summary>macOS: avfoundation index of "Capture screen 0" (screens follow the cameras in the device list).</summary>
+    public static async Task<int?> FindMacScreenDeviceAsync(FfmpegTools tools, CancellationToken ct = default)
+    {
+        var r = await FfmpegRunner.RunAsync(tools.Ffmpeg, new[] { "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", "" }, ct);
+        foreach (var line in r.StdErrTail.Split('\n'))
+        {
+            var i = line.IndexOf("] [", StringComparison.Ordinal);
+            if (i < 0 || !line.Contains("Capture screen", StringComparison.Ordinal)) continue;
+            var close = line.IndexOf(']', i + 3);
+            if (close > 0 && int.TryParse(line[(i + 3)..close], out var idx)) return idx;
+        }
+        return null;
     }
 
     /// <summary>Lists DirectShow audio devices (microphones) on Windows.</summary>

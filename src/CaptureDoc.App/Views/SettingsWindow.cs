@@ -39,6 +39,7 @@ public sealed class SettingsWindow : Window
         var recFps = new NumericUpDown { Value = s.Platform.RecordingFps, Minimum = 5, Maximum = 60, FormatString = "0", Width = 120 };
         var recCountdown = new NumericUpDown { Value = s.Platform.RecordingCountdown, Minimum = 0, Maximum = 10, FormatString = "0", Width = 120 };
         var recCursor = new CheckBox { Content = "Mauszeiger im Video", IsChecked = s.Platform.RecordCursor };
+        var recClicks = new CheckBox { Content = "Mausklicks markieren (als bearbeitbare Annotationen)", IsChecked = s.Platform.HighlightClicks, IsEnabled = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() };
         var recMic = new CheckBox { Content = "Mikrofon aufnehmen", IsChecked = s.Platform.RecordMicrophone };
         var micDevice = new ComboBox { MinWidth = 260, PlaceholderText = "Gerät wird gesucht …" };
         if (app.Ffmpeg is { } ff)
@@ -65,6 +66,7 @@ public sealed class SettingsWindow : Window
             s.Platform.RecordingFps = (int)(recFps.Value ?? 30);
             s.Platform.RecordingCountdown = (int)(recCountdown.Value ?? 3);
             s.Platform.RecordCursor = recCursor.IsChecked == true;
+            s.Platform.HighlightClicks = recClicks.IsChecked == true;
             s.Platform.RecordMicrophone = recMic.IsChecked == true && micDevice.SelectedItem is string;
             if (micDevice.SelectedItem is string mic) s.Platform.MicrophoneDevice = mic;
             foreach (var (setting, box) in hotkeyBoxes)
@@ -92,9 +94,9 @@ public sealed class SettingsWindow : Window
                     hk,
                     Ui.Label("Video / GIF", 13, bold: true),
                     Ui.Row(Ui.Field("Bilder pro Sekunde", recFps), Ui.Field("Countdown (s)", recCountdown)),
-                    recCursor,
+                    recCursor, recClicks,
                     Ui.Row(recMic, micDevice),
-                    Ui.Label("Systemton wird noch nicht aufgenommen (geplant).", 11, opacity: 0.6),
+                    Ui.Label("Systemton: unter Windows das Gerät „Stereomix“ wählen (ggf. in der Windows-Soundsteuerung unter „Aufnahme“ aktivieren). macOS zeigt Klicks selbst an.", 11, opacity: 0.6),
                     ffInfo,
                     dataInfo,
                     new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { save } },

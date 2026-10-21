@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Avalonia;
 using CaptureDoc.Core.Portable;
 
@@ -5,25 +7,32 @@ namespace CaptureDoc.App;
 
 internal static class Program
 {
-    public const string InstanceEventName = "CaptureDoc.Portable.ShowQuickCapture";
-
     [STAThread]
     public static int Main(string[] args)
     {
         var appRoot = PortableEnvironment.FindAppRoot(AppContext.BaseDirectory);
-        if (OperatingSystem.IsWindows())
-            CaptureDoc.Platform.Windows.NativeRuntimeBootstrap.Configure(appRoot,
-                typeof(SkiaSharp.SKImage).Assembly, typeof(HarfBuzzSharp.Buffer).Assembly);
+        ConfigureNativeLibraries(appRoot);
 
-        // Single instance per portable folder: a second start just shows the quick-capture bar.
-        var name = InstanceEventName + "." + Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(appRoot.ToLowerInvariant())))[..12];
-        using var signal = new EventWaitHandle(false, EventResetMode.AutoReset, name, out var createdNew);
-        if (!createdNew)
+        // Single instance per portable folder (cross-platform). Later starts forward their arguments,
+        // e.g. "CaptureDoc-Linux --capture region" bound to a desktop shortcut.
+        var env = PortableEnvironment.Detect();
+        SingleInstance? instance = null;
+        try
         {
-            signal.Set();
-            return 0;
+            Directory.CreateDirectory(env.CacheDir);
+            instance = new SingleInstance(env.CacheDir);
+            if (!instance.IsFirst)
+            {
+                instance.Send(args);
+                instance.Dispose();
+                return 0;
+            }
         }
-        App.InstanceSignal = signal;
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            instance = null; // read-only medium: run without single-instance support
+        }
+        App.Instance = instance;
         App.StartupArgs = args;
 
         try
@@ -34,6 +43,40 @@ internal static class Program
         {
             Services.Log.Error("Fatal", ex);
             throw;
+        }
+        finally { instance?.Dispose(); }
+    }
+
+    /// <summary>
+    /// Native libraries live in &lt;AppRoot&gt;/Runtime/&lt;rid&gt;/ (Windows, Linux) so nothing is extracted to temp.
+    /// On macOS they are inside the .app bundle next to the executable (default probing). See ADR-002.
+    /// </summary>
+    private static void ConfigureNativeLibraries(string appRoot)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            CaptureDoc.Platform.Windows.NativeRuntimeBootstrap.Configure(appRoot, typeof(SkiaSharp.SKImage).Assembly, typeof(HarfBuzzSharp.Buffer).Assembly);
+            return;
+        }
+        if (!OperatingSystem.IsLinux()) return;
+        var arch = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "linux-arm64" : "linux-x64";
+        var dir = Path.Combine(appRoot, "Runtime", arch);
+        if (!Directory.Exists(dir)) return;
+        foreach (var asm in new[] { typeof(SkiaSharp.SKImage).Assembly, typeof(HarfBuzzSharp.Buffer).Assembly })
+        {
+            try
+            {
+                NativeLibrary.SetDllImportResolver(asm, (name, _, _) =>
+                {
+                    foreach (var candidate in new[] { name, name + ".so", "lib" + name + ".so" })
+                    {
+                        var f = Path.Combine(dir, candidate);
+                        if (File.Exists(f) && NativeLibrary.TryLoad(f, out var h)) return h;
+                    }
+                    return 0;
+                });
+            }
+            catch (InvalidOperationException) { }
         }
     }
 

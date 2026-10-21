@@ -153,6 +153,10 @@ public sealed class PropertiesPanel : ScrollViewer
                     break;
                 case ImageLayer im:
                     _stack.Children.Add(Ui.Label(im.IsBackground ? "Originalaufnahme (nichtdestruktiv, wird nie verändert)." : "Bildebene", 12, opacity: 0.75));
+                    Check("Schatten", im.Shadow, v => Edit<ImageLayer>("Schatten", "shadow", x => x.Shadow = v));
+                    Number("Rahmenstärke", im.BorderWidth, 0, 40, v => Edit<ImageLayer>("Rahmen", "bw", x => x.BorderWidth = v));
+                    ColorRow("Rahmenfarbe", im.BorderColor, c => Edit<ImageLayer>("Rahmenfarbe", "bc", x => x.BorderColor = c));
+                    Number("Eckenradius", im.CornerRadius, 0, 200, v => Edit<ImageLayer>("Ecken", "cr", x => x.CornerRadius = v));
                     if (!im.IsBackground) BoxGeometry(im);
                     break;
                 case GroupLayer g:
@@ -180,6 +184,7 @@ public sealed class PropertiesPanel : ScrollViewer
         _stack.Children.Add(Ui.Row(
             Ui.Button("Skalieren", () => _canvas.Apply("Bildgröße", () => PageOperations.Resize(p, (int)(w.Value ?? p.Width), (int)(h.Value ?? p.Height))), "Bild und alle Ebenen skalieren"),
             Ui.Button("Leinwand", () => _canvas.Apply("Leinwandgröße", () => PageOperations.ResizeCanvas(p, (int)(w.Value ?? p.Width), (int)(h.Value ?? p.Height))), "Leinwand vergrößern/verkleinern (zentriert, ohne Skalierung)")));
+        _stack.Children.Add(Ui.Button("▢ Rahmen & Schatten", () => _canvas.Apply("Rahmen & Schatten", () => PageOperations.AddFrameAndShadow(p)), "Transparenter Rand, weicher Schatten, feiner Rahmen und runde Ecken um den Screenshot (rückgängig machbar)"));
         ColorRow("Leinwandfarbe", p.Background, c => _canvas.Apply("Leinwandfarbe", () => p.Background = c, "pagebg"), allowTransparent: true);
     }
 

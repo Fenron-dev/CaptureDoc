@@ -13,7 +13,9 @@ public sealed class TimelineControl : Control
 {
     public double Duration { get; set; } = 1;
     public double Position { get; set; }
-    public ClipRange Clip { get; set; } = new();
+    public ClipRange Range { get; set; } = new();
+    /// <summary>Start of a cut that is being marked (end = playhead).</summary>
+    public double? PendingCut { get; set; }
     public IReadOnlyList<Bitmap> Thumbs { get; set; } = Array.Empty<Bitmap>();
     public event EventHandler<double>? Seek;
     private bool _drag;
@@ -39,14 +41,24 @@ public sealed class TimelineControl : Control
             }
         }
         var dim = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0));
-        ctx.DrawRectangle(dim, null, new Rect(0, stripTop, X(Clip.Start), stripH));
-        ctx.DrawRectangle(dim, null, new Rect(X(Clip.End), stripTop, w - X(Clip.End), stripH));
+        ctx.DrawRectangle(dim, null, new Rect(0, stripTop, X(Range.Start), stripH));
+        ctx.DrawRectangle(dim, null, new Rect(X(Range.End), stripTop, w - X(Range.End), stripH));
         var cutBrush = new SolidColorBrush(Color.FromArgb(150, 220, 40, 40));
-        foreach (var (a, b) in Clip.Cuts)
+        foreach (var (a, b) in Range.Cuts)
             ctx.DrawRectangle(cutBrush, null, new Rect(X(a), stripTop, Math.Max(2, X(b) - X(a)), stripH));
+        if (PendingCut is { } pc)
+        {
+            var a = Math.Min(pc, Position); var b = Math.Max(pc, Position);
+            ctx.DrawRectangle(new SolidColorBrush(Color.FromArgb(90, 255, 140, 0)), new Pen(Brushes.Orange, 1, DashStyle.Dash), new Rect(X(a), stripTop, Math.Max(2, X(b) - X(a)), stripH));
+        }
+        foreach (var (a, b) in Range.Cuts)
+        {
+            var lbl = new FormattedText("✂ entfernt", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 10, Brushes.White);
+            if (X(b) - X(a) > lbl.Width + 4) ctx.DrawText(lbl, new Point(X(a) + 2, stripTop + 2));
+        }
         var green = new Pen(new SolidColorBrush(Color.FromRgb(60, 200, 100)), 3);
-        ctx.DrawLine(green, new Point(X(Clip.Start), stripTop), new Point(X(Clip.Start), Bounds.Height));
-        ctx.DrawLine(green, new Point(X(Clip.End), stripTop), new Point(X(Clip.End), Bounds.Height));
+        ctx.DrawLine(green, new Point(X(Range.Start), stripTop), new Point(X(Range.Start), Bounds.Height));
+        ctx.DrawLine(green, new Point(X(Range.End), stripTop), new Point(X(Range.End), Bounds.Height));
 
         // time ruler
         var step = Duration > 600 ? 60 : Duration > 120 ? 10 : Duration > 30 ? 5 : 1;

@@ -1,6 +1,6 @@
-﻿# Third-Party Licenses – CaptureDoc 0.1.0
+# Third-Party Licenses – CaptureDoc 0.3.0
 
-Stand: 2026-10-20. CaptureDoc ist für die interne Nutzung bestimmt. **Interne Nutzung befreit nicht von Lizenzpflichten:**
+Stand: 2026-10-21. CaptureDoc ist für die interne Nutzung bestimmt. **Interne Nutzung befreit nicht von Lizenzpflichten:**
 Bei jeder Weitergabe einer Kopie (z. B. USB-Stick an externe Dienstleister, Kunden, Partner) müssen die unten genannten
 Lizenztexte und Copyright-Hinweise mitgegeben werden. Diese Datei liegt deshalb immer im portablen Hauptordner.
 
@@ -18,6 +18,9 @@ Lizenztexte und Copyright-Hinweise mitgegeben werden. Diese Datei liegt deshalb 
 | MicroCom.Runtime | 0.11.6 | MIT | © Nikita Tsukanov | EXE |
 | Tmds.DBus.Protocol | 0.94.1 | MIT | © Tom Deseyn | EXE (nur Linux genutzt) |
 
+Linux- und macOS-Starter enthalten dieselben Komponenten (`Runtime/linux-x64/libSkiaSharp.so`, `libHarfBuzzSharp.so`; im `.app` die entsprechenden `.dylib`), ANGLE nur unter Windows.
+`CaptureDoc.Platform.Unix` ruft vorhandene Systemwerkzeuge auf (`screencapture`, `osascript`, `grim`, `slurp`, `maim`, `xdotool`, `wl-copy`, `xclip`) – diese werden nicht mitgeliefert und nicht gelinkt.
+
 Alle Lizenzen erlauben Nutzung und Weitergabe; Pflicht ist das Beilegen des Lizenztextes und Copyright-Hinweises.
 MIT-Lizenztext (gilt für alle als MIT markierten Einträge, jeweils mit obigem Copyright):
 
@@ -29,7 +32,8 @@ BSD-3-Clause (Skia, ANGLE): Weitergabe in Binärform nur mit Copyright-Hinweis, 
 
 | Komponente | Lizenz | Hinweis |
 |---|---|---|
-| xUnit 2.9.3, Microsoft.NET.Test.Sdk 17.14.1 | Apache-2.0 / MIT | nur Tests |
+| xUnit 2.9.3, xunit.v3 3.2.2, Microsoft.NET.Test.Sdk 17.14.1 | Apache-2.0 / MIT | nur Tests |
+| Avalonia.Headless.XUnit 12.1.4 | MIT | nur Headless-UI-Tests |
 | Avalonia.BuildServices 11.3.2 | MIT | **sendet beim Build anonyme Telemetrie an AvaloniaUI.** Abgeschaltet über `AVALONIA_TELEMETRY_OPTOUT=1` im Build-Skript. Die fertige App sendet nichts. |
 | Microsoft.NET.ILLink.Tasks | MIT | Build-Werkzeug |
 

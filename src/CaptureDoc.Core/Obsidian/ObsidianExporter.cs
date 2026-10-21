@@ -10,6 +10,20 @@ namespace CaptureDoc.Core.Obsidian;
 
 public sealed record RenderedImage(byte[] Data, string Extension, int Width, int Height);
 
+/// <summary>A rendered video/GIF on disk (copied, never loaded into memory).</summary>
+public sealed record RenderedMedia(string FilePath, string Extension, bool IsVideo);
+
+/// <summary>Content of a planned file: bytes in memory or a file on disk.</summary>
+public sealed class Payload
+{
+    public byte[]? Data { get; }
+    public string? SourceFile { get; }
+    private string? _hash;
+    public Payload(byte[] data) => Data = data;
+    public Payload(string sourceFile, bool file) => SourceFile = sourceFile;
+    public string Hash => _hash ??= Data is not null ? ObsidianExporter.HashBytes(Data) : ObsidianExporter.HashFile(SourceFile!);
+}
+
 public enum ConflictPolicy
 {
     /// <summary>Default: keep the modified/foreign file and write ours under a new unique name.</summary>
@@ -29,6 +43,9 @@ public sealed class PlannedFile
     public required bool IsNote { get; init; }
     public required PlannedAction Action { get; init; }
     public byte[] Data { get; init; } = Array.Empty<byte>();
+    /// <summary>Large content (videos) is copied from here instead of <see cref="Data"/>.</summary>
+    public string? SourceFile { get; init; }
+    public string ContentHash { get; init; } = "";
     public string? Reason { get; init; }
     /// <summary>Original target if renamed due to a conflict.</summary>
     public string? OriginalName { get; init; }
@@ -42,6 +59,8 @@ public sealed class ObsidianExportRequest
     public required Guide Guide { get; init; }
     public required GuideTemplate Template { get; init; }
     public required IReadOnlyDictionary<Guid, RenderedImage> Images { get; init; }
+    /// <summary>Optional video/GIF per step; replaces the step image in the note.</summary>
+    public IReadOnlyDictionary<Guid, RenderedMedia> Videos { get; init; } = new Dictionary<Guid, RenderedMedia>();
     public LinkStyle Links { get; init; } = LinkStyle.Wikilink;
     public string AssetsFolder { get; init; } = "Assets";
     public int DefaultDisplayWidth { get; init; } = 700;
@@ -123,15 +142,23 @@ public static class ObsidianExporter
         foreach (var step in r.Guide.Steps)
         {
             n++;
+            string Link(string full) => r.Links == LinkStyle.Wikilink
+                ? VaultValidator.ToVaultRelative(r.VaultRoot, full)
+                : Path.GetRelativePath(noteDir, full).Replace('\\', '/');
+            var alt = string.IsNullOrWhiteSpace(step.Title) ? $"Schritt {n}" : step.Title;
+            if (r.Videos.TryGetValue(step.Id, out var vid))
+            {
+                var vname = $"{slug}-schritt-{n:00}-video{vid.Extension}";
+                var vf = PlanFile(assetsDir, vname, new Payload(vid.FilePath, true), previous, noteDir, r.Policy, plannedNames, isNote: false, r.VaultRoot);
+                assets.Add(vf);
+                imageRefs[step.Id] = new(Link(vf.FullPath), step.DisplayWidth ?? r.DefaultDisplayWidth, alt, vid.IsVideo);
+                continue;
+            }
             if (!r.Images.TryGetValue(step.Id, out var img)) continue;
             var name = $"{slug}-schritt-{n:00}{img.Extension}";
-            var pf = PlanFile(assetsDir, name, img.Data, previous, noteDir, r.Policy, plannedNames, isNote: false, r.VaultRoot);
+            var pf = PlanFile(assetsDir, name, new Payload(img.Data), previous, noteDir, r.Policy, plannedNames, isNote: false, r.VaultRoot);
             assets.Add(pf);
-            var finalFull = pf.FullPath;
-            var link = r.Links == LinkStyle.Wikilink
-                ? VaultValidator.ToVaultRelative(r.VaultRoot, finalFull)
-                : Path.GetRelativePath(noteDir, finalFull).Replace('\\', '/');
-            imageRefs[step.Id] = new(link, step.DisplayWidth ?? r.DefaultDisplayWidth, string.IsNullOrWhiteSpace(step.Title) ? $"Schritt {n}" : step.Title);
+            imageRefs[step.Id] = new(Link(pf.FullPath), step.DisplayWidth ?? r.DefaultDisplayWidth, alt);
         }
 
         if (previous is not null)
@@ -143,7 +170,7 @@ public static class ObsidianExporter
 
         var md = MarkdownBuilder.Build(r.Guide, r.Template, imageRefs, r.Links, r.Now);
         var mdBytes = new UTF8Encoding(false).GetBytes(md);
-        var note = PlanFile(noteDir, noteName, mdBytes, previous, noteDir, r.Policy, plannedNames, isNote: true, r.VaultRoot);
+        var note = PlanFile(noteDir, noteName, new Payload(mdBytes), previous, noteDir, r.Policy, plannedNames, isNote: true, r.VaultRoot);
 
         var plan = new ExportPlan { VaultRoot = r.VaultRoot, NoteDirectory = noteDir, Note = note, Assets = assets, Markdown = md };
         plan.Warnings.AddRange(warnings);
@@ -151,7 +178,7 @@ public static class ObsidianExporter
         return plan;
     }
 
-    private static PlannedFile PlanFile(string dir, string name, byte[] data, ExportRecord? previous, string noteDir, ConflictPolicy policy,
+    private static PlannedFile PlanFile(string dir, string name, Payload data, ExportRecord? previous, string noteDir, ConflictPolicy policy,
         HashSet<string> plannedNames, bool isNote, string vaultRoot)
     {
         var full = Path.Combine(dir, name);
@@ -159,13 +186,13 @@ public static class ObsidianExporter
         PlannedFile Make(string path, PlannedAction a, string? reason = null, string? original = null)
         {
             plannedNames.Add(path);
-            return new PlannedFile { FullPath = path, VaultRelativePath = VaultValidator.ToVaultRelative(vaultRoot, path), IsNote = isNote, Action = a, Data = data, Reason = reason, OriginalName = original };
+            return new PlannedFile { FullPath = path, VaultRelativePath = VaultValidator.ToVaultRelative(vaultRoot, path), IsNote = isNote, Action = a, Data = data.Data ?? Array.Empty<byte>(), SourceFile = data.SourceFile, ContentHash = data.Hash, Reason = reason, OriginalName = original };
         }
 
         if (!File.Exists(full) && !plannedNames.Contains(full)) return Make(full, PlannedAction.Create);
 
-        var existingHash = File.Exists(full) ? Hash(File.ReadAllBytes(full)) : null;
-        var newHash = Hash(data);
+        var existingHash = File.Exists(full) ? HashFile(full) : null;
+        var newHash = data.Hash;
         if (existingHash == newHash) return Make(full, PlannedAction.Unchanged);
 
         var ours = previous is not null && previous.Files.TryGetValue(rel, out var recorded) && recorded == existingHash;
@@ -191,8 +218,8 @@ public static class ObsidianExporter
                         var prevName = Path.GetFileName(prevFull);
                         if (!string.Equals(Path.GetDirectoryName(prevFull), Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase)) continue;
                         if (!prevName.StartsWith(stem, StringComparison.OrdinalIgnoreCase) || !prevName.EndsWith(ext, StringComparison.OrdinalIgnoreCase) || prevName.Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
-                        if (plannedNames.Contains(prevFull) || !File.Exists(prevFull) || Hash(File.ReadAllBytes(prevFull)) != prevHash) continue;
-                        return Make(prevFull, Hash(File.ReadAllBytes(prevFull)) == newHash ? PlannedAction.Unchanged : PlannedAction.Update);
+                        if (plannedNames.Contains(prevFull) || !File.Exists(prevFull) || HashFile(prevFull) != prevHash) continue;
+                        return Make(prevFull, HashFile(prevFull) == newHash ? PlannedAction.Unchanged : PlannedAction.Update);
                     }
                 }
                 var unique = SafeFileName.MakeUnique(name, cand => File.Exists(Path.Combine(dir, cand)) || plannedNames.Contains(Path.Combine(dir, cand)), slugStyle: !isNote);
@@ -216,7 +243,7 @@ public static class ObsidianExporter
             switch (f.Action)
             {
                 case PlannedAction.Unchanged:
-                    newRecord.Files[rel] = Hash(f.Data);
+                    newRecord.Files[rel] = f.ContentHash;
                     break;
                 case PlannedAction.ConflictSkip:
                     result.Skipped.Add(f.VaultRelativePath);
@@ -224,8 +251,10 @@ public static class ObsidianExporter
                     break;
                 default:
                     Directory.CreateDirectory(Path.GetDirectoryName(f.FullPath)!);
-                    AtomicFile.WriteAllBytes(f.FullPath, f.Data);
-                    newRecord.Files[rel] = Hash(f.Data);
+                    if (f.SourceFile is not null)
+                        AtomicFile.Write(f.FullPath, dst => { using var src = File.OpenRead(f.SourceFile); src.CopyTo(dst); });
+                    else AtomicFile.WriteAllBytes(f.FullPath, f.Data);
+                    newRecord.Files[rel] = f.ContentHash;
                     result.Written.Add(f.VaultRelativePath);
                     break;
             }
@@ -281,5 +310,6 @@ public static class ObsidianExporter
     }
 
     private static string Rel(string baseDir, string full) => Path.GetRelativePath(baseDir, full).Replace('\\', '/');
-    private static string Hash(byte[] d) => Convert.ToHexStringLower(SHA256.HashData(d));
+    public static string HashBytes(byte[] d) => Convert.ToHexStringLower(SHA256.HashData(d));
+    public static string HashFile(string path) { using var fs = File.OpenRead(path); return Convert.ToHexStringLower(SHA256.HashData(fs)); }
 }

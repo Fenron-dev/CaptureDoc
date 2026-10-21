@@ -6,21 +6,21 @@ tags: [roadmap]
 Priorität: Quick Capture → Ebeneneditor → Wiederbearbeitbare Projekte → Obsidian-Dokumentation → Video/GIF → Plattformausbau → Erweitert.
 Status: [[Progress]] · Probleme: [[Open-Issues]] · Tests: [[Test-Results]].
 
-| Phase | Inhalt | Status (2026-10-20) |
+| Phase | Inhalt | Status (2026-10-21, v0.3.0) |
 |---|---|---|
 | 1 | Analyse, Feature-Matrix, Lizenzen, Architektur, Datenmodell, DevVault | ✅ |
 | 2 | Solution, Avalonia-Shell, Portable Settings, Plattformabstraktion, Theme | ✅ |
 | 3 | Windows-Capture, Bereichsauswahl, Fenster, Editor, Ebenenpanel, PNG, Zwischenablage, portable EXE | ✅ getestet |
-| 4 | Projektformat, Gruppen, Eigenschaftenpanel, Undo/Redo, Schwärzung, Bildexportprofile | ✅ (offen: Drag & Drop in Ebenenliste, Drehen) |
-| 5 | Obsidian-Export, Vorlagen, Konflikte, Vorschau, Documentation Builder, HTML mit Bild-Popup | ✅ (offen: PDF direkt) |
-| 6 | Bildschirmvideo, Pause, Timeline, Trimmen/Schneiden, MP4/GIF mit Größenlimits | ✅ getestet (0.2.0) |
-| 7 | Tutorial-Videoeditor: zeitgesteuerte Ebenen, Keyframes, Zoom/Pan, Videos im Projektformat | ⏳ nächste Phase |
-| 8 | macOS (ScreenCaptureKit, Bundle, TCC) | geplant |
-| 9 | Linux (Portal/PipeWire, X11) | geplant |
-| 10 | Optimierung, Trimming/Native AOT, Release-Qualität | geplant |
+| 4 | Projektformat, Gruppen, Eigenschaften, Undo/Redo, Schwärzung, Exportprofile, Drag & Drop der Ebenen | ✅ (offen: Drehen) |
+| 5 | Obsidian-Export, Vorlagen, Konflikte, Vorschau, Documentation Builder, HTML (Popup, Video), PDF | ✅ |
+| 6 | Bildschirmvideo, Pause, Schnitte (inkl. Anwenden/Entfernen), Stream Copy, MP4/GIF mit Größenlimits, Klick-Markierung | ✅ getestet |
+| 7 | Zeitgesteuerte Annotationen, Bewegung, Zoom/Pan-Keyframes, Video-Schritte in Anleitungen | ✅ getestet (Logik + Headless-UI) |
+| 8 | macOS: screencapture, avfoundation, Zwischenablage, .app-Bundle mit Info.plist | ◐ implementiert + paketiert, **ungetestet** |
+| 9 | Linux: Wayland-Tools / X11, Zwischenablage, Paket | ◐ implementiert + paketiert, **ungetestet**; Wayland-Video fehlt |
+| 10 | Performance (Renderer 17× schneller bei Pfeilen, Drag-Cache), Pinning, Pipette, Stilvorlagen, Serien, Rahmen/Schatten | ◐ weitere Punkte siehe [[Later-Features]] |
 
 ## Nächste konkrete Schritte
-1. Phase 7: Annotationsebenen mit Start/Ende im Video-Editor (gleiches Ebenenpanel), Rendering per Frame über `SceneRenderer` + FFmpeg-Pipe.
-2. Videos und Schnittliste im `.capturedoc`-Projekt (Formatversion 2 inkl. Migration).
-3. Mausklick-Hervorhebung, Systemton (WASAPI-Loopback), ddagrab/WGC als schnellere Quelle.
-4. Mehrmonitor-Test (gemischte DPI), WGC-Fensteraufnahme ohne Überdeckung.
+1. Test auf einem Mac (Apple Silicon) und einem Linux-Desktop (GNOME/Wayland und X11), Fehler beheben, ad-hoc signieren.
+2. macOS: ScreenCaptureKit-Brücke (Fensterliste, Systemton); Linux: XDG-Portal + PipeWire für Wayland-Video.
+3. WGC-Backend unter Windows (Fenster ohne Überdeckung), Mehrmonitor-Test mit gemischter Skalierung.
+4. Trimming/Native AOT zur Verkleinerung der EXE, OCR und Scrolling Capture.

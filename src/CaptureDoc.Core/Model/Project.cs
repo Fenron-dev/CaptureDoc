@@ -3,7 +3,8 @@ namespace CaptureDoc.Core.Model;
 /// <summary>Root of a .capturedoc file.</summary>
 public sealed class CaptureProject
 {
-    public const int CurrentFormatVersion = 1;
+    /// <summary>1 = images only (0.1). 2 = video references in guide steps (0.2+).</summary>
+    public const int CurrentFormatVersion = 2;
 
     public int FormatVersion { get; set; } = CurrentFormatVersion;
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -121,6 +122,51 @@ public sealed class GuideStep
     public List<Callout> Callouts { get; set; } = new();
     /// <summary>Display width in Obsidian (independent of exported pixel size). Null = profile default.</summary>
     public int? DisplayWidth { get; set; }
+    /// <summary>Optional video clip shown for this step (the page then serves as poster image).</summary>
+    public VideoRef? Video { get; set; }
+}
+
+public enum VideoOutputFormat { Mp4, Gif }
+
+/// <summary>
+/// Reference to a video file (never loaded into memory) plus the clip to use.
+/// <see cref="Path"/> is stored relative to the project file if possible, else portable ("./…") or absolute.
+/// </summary>
+public sealed class VideoRef
+{
+    public string Path { get; set; } = "";
+    public double Start { get; set; }
+    public double End { get; set; }
+    public List<TimeCut> Cuts { get; set; } = new();
+    public VideoOutputFormat Format { get; set; } = VideoOutputFormat.Mp4;
+    public int? MaxWidth { get; set; } = 1280;
+    /// <summary>Soft size target for the exported file.</summary>
+    public long? MaxBytes { get; set; } = 20L * 1024 * 1024;
+    public bool IncludeAudio { get; set; } = true;
+    /// <summary>Time-based annotations rendered into the exported video (Phase 7).</summary>
+    public VideoOverlay? Overlay { get; set; }
+    public double KeptDuration => Math.Max(0, End - Start - Cuts.Sum(c => Math.Max(0, Math.Min(c.To, End) - Math.Max(c.From, Start))));
+}
+
+public sealed class TimeCut
+{
+    public double From { get; set; }
+    public double To { get; set; }
+}
+
+/// <summary>Annotation layers on top of a video. Every layer has <see cref="Layer.Timing"/> in source seconds.</summary>
+public sealed class VideoOverlay
+{
+    /// <summary>Same layer model as the image editor; page size = video size.</summary>
+    public Page Page { get; set; } = new();
+    public List<ZoomKeyframe> Zoom { get; set; } = new();
+}
+
+/// <summary>Visible area of the video at a time (zoom/pan). Between keyframes the view is interpolated.</summary>
+public sealed class ZoomKeyframe
+{
+    public double TimeSeconds { get; set; }
+    public RectD View { get; set; }
 }
 
 public enum CalloutKind { Info, Note, Tip, Warning, Danger, Success, Question, Example }

@@ -1,7 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.VisualTree;
 using Avalonia.Media;
 using CaptureDoc.App.Util;
 using CaptureDoc.Core.Model;
@@ -62,7 +65,55 @@ public sealed class LayersPanel : DockPanel
 
         _canvas.DocumentChanged += (_, _) => Rebuild();
         _canvas.SelectionChanged += (_, _) => { if (!_syncing) SyncSelection(); SyncOpacity(); };
+
+        // drag & drop reordering (tunnel + handledEventsToo: the ListBox handles presses for selection)
+        _list.AddHandler(PointerPressedEvent, (_, e) => { _dragRow = RowAt(e.GetPosition(_list)); _dragStart = e.GetPosition(_list); }, RoutingStrategies.Tunnel, handledEventsToo: true);
+        _list.AddHandler(PointerMovedEvent, (_, e) =>
+        {
+            if (_dragRow is null) return;
+            var moved = Distance(e.GetPosition(_list), _dragStart) > 6;
+            _list.Cursor = moved ? new Cursor(StandardCursorType.DragMove) : Cursor.Default;
+        }, RoutingStrategies.Tunnel, handledEventsToo: true);
+        _list.AddHandler(PointerReleasedEvent, (_, e) =>
+        {
+            var src = _dragRow; _dragRow = null; _list.Cursor = Cursor.Default;
+            if (src is null || Distance(e.GetPosition(_list), _dragStart) <= 6) return;
+            if (RowAt(e.GetPosition(_list)) is { } target && target.Layer.Id != src.Layer.Id) MoveTo(src.Layer, target.Layer);
+        }, RoutingStrategies.Tunnel, handledEventsToo: true);
         Rebuild();
+    }
+
+    private Row? _dragRow;
+    private Point _dragStart;
+    private static double Distance(Point a, Point b) => Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
+
+    private Row? RowAt(Point p)
+    {
+        var hit = _list.InputHitTest(p) as Visual;
+        for (var v = hit; v is not null; v = v.GetVisualParent())
+            if (v is Control { Tag: Row r }) return r;
+        return null;
+    }
+
+    /// <summary>Puts <paramref name="src"/> at the position of <paramref name="target"/> (also into/out of groups).</summary>
+    private void MoveTo(Layer src, Layer target)
+    {
+        var page = _canvas.Page;
+        if (src is ImageLayer { IsBackground: true } || src.Locked) return;
+        if (src is GroupLayer g && g.AllChildren().Any(c => c.Id == target.Id)) return; // not into itself
+        var targetList = page.FindContainer(target.Id);
+        var srcList = page.FindContainer(src.Id);
+        if (targetList is null || srcList is null) return;
+        _canvas.Apply("Reihenfolge ändern", () =>
+        {
+            srcList.Remove(src);
+            var idx = targetList.IndexOf(target);
+            // list shows the top layer first: dropping on a row means "take its place" (above when moving up)
+            var insert = Math.Clamp(idx + 1, 0, targetList.Count);
+            if (ReferenceEquals(targetList, page.Layers) && insert == 0) insert = 1;
+            if (targetList.Count > 0 && targetList[0] is ImageLayer { IsBackground: true } && insert < 1) insert = 1;
+            targetList.Insert(insert, src);
+        });
     }
 
     private static Button Small(string text, string tip, Action a)
