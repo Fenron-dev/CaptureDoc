@@ -3,6 +3,12 @@ tags: [changelog]
 ---
 # Changelog
 
+## 0.3.1 – 2026-10-21
+- **Annotations-Spuren** unter der Video-Timeline: je Annotation ein Balken, ziehen = zeitlich verschieben, Ränder = Beginn/Ende; Klick wählt die Annotation in der Seitenleiste.
+- **Ebenenreihenfolge im Video** wie im Screenshot-Editor: ▲/▼ je Annotation; eine Schwärzung verdeckt nur, was unter ihr liegt (z. B. Nummer darüber bleibt sichtbar).
+- Behoben: Zoom wurde *vor* Schwärzungen/Annotationen angewendet → bei gezoomten Stellen saß die Schwärzung an der falschen Stelle (Datenschutzrisiko). Zoom kommt jetzt zuletzt.
+- Behoben: Absturz der Seitenleiste beim Neuaufbau (Zoom-Keyframe setzen, Annotation löschen) – Zoom-Regler hing noch am alten Platz.
+
 ## 0.3.0 – 2026-10-21
 - **Video-Editor**: markierte Schnitte als Liste mit ✕ (Markierung zurücknehmen), Entf im Schnitt, „✂ Schnitte anwenden“ → neue gekürzte Fassung; MP4 „verlustfrei schneiden“ (Stream Copy).
 - **Video-Schritte in Anleitungen**: Clip mit Schnitten/Annotationen als Schritt; Export nach Obsidian/Markdown (eingebettetes MP4/GIF), HTML (`<video>` mit Poster), PDF (Standbild + Hinweis). Projektformat **v2** (Migration von v1 automatisch).

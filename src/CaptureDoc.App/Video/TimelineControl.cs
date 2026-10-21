@@ -8,9 +8,31 @@ using CaptureDoc.Media;
 
 namespace CaptureDoc.App.Video;
 
-/// <summary>Thumbnail strip with in/out range, cut-outs and playhead. Click/drag = seek.</summary>
+/// <summary>One annotation track below the thumbnails (top layer first).</summary>
+public sealed record TimelineLane(Guid Id, string Name, double Start, double End, bool IsEffect, bool Selected);
+
+/// <summary>
+/// Thumbnail strip with in/out range, cut-outs and playhead. Click/drag = seek.
+/// Below it one track per annotation: drag the bar to move it in time, drag its edges to change start/end.
+/// </summary>
 public sealed class TimelineControl : Control
 {
+    public const double StripBottom = 78, LaneH = 18, LaneGap = 2;
+    private IReadOnlyList<TimelineLane> _lanes = Array.Empty<TimelineLane>();
+    public IReadOnlyList<TimelineLane> Lanes
+    {
+        get => _lanes;
+        set { _lanes = value; Height = StripBottom + (value.Count > 0 ? 4 + value.Count * (LaneH + LaneGap) : 0); InvalidateVisual(); }
+    }
+    /// <summary>Live while dragging a track: id, new start, new end (seconds).</summary>
+    public event EventHandler<(Guid Id, double Start, double End)>? LaneEdited;
+    /// <summary>Track clicked or drag finished.</summary>
+    public event EventHandler<Guid>? LaneSelected;
+    private enum LaneDrag { None, Move, Start, End }
+    private LaneDrag _laneDrag;
+    private TimelineLane? _dragLane;
+    private double _dragT0;
+
     public double Duration { get; set; } = 1;
     public double Position { get; set; }
     public ClipRange Range { get; set; } = new();
@@ -72,13 +94,92 @@ public sealed class TimelineControl : Control
                 ctx.DrawText(ft, new Point(X(t) + 2, 0));
             }
         }
+        // annotation tracks
+        var top = StripBottom + 4;
+        foreach (var l in _lanes)
+        {
+            var x0 = X(l.Start); var x1 = X(Math.Min(Duration, l.End));
+            var bar = new Rect(x0, top, Math.Max(4, x1 - x0), LaneH);
+            var fill = l.IsEffect ? Color.FromArgb(220, 70, 70, 76) : Color.FromArgb(220, 0, 110, 200);
+            ctx.DrawRectangle(new SolidColorBrush(fill), l.Selected ? new Pen(Brushes.Gold, 2) : new Pen(new SolidColorBrush(Color.FromArgb(120, 255, 255, 255)), 1), bar, 3, 3);
+            // edge grips
+            var grip = new SolidColorBrush(Color.FromArgb(200, 255, 255, 255));
+            ctx.DrawRectangle(grip, null, new Rect(bar.X, bar.Y + 4, 3, LaneH - 8));
+            ctx.DrawRectangle(grip, null, new Rect(bar.Right - 3, bar.Y + 4, 3, LaneH - 8));
+            var label = new FormattedText((l.IsEffect ? "■ " : "") + l.Name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 11, Brushes.White);
+            using (ctx.PushClip(new Rect(bar.X + 5, bar.Y, Math.Max(0, bar.Width - 10), LaneH)))
+                ctx.DrawText(label, new Point(bar.X + 6, bar.Y + 2));
+            top += LaneH + LaneGap;
+        }
+
         var head = new Pen(Brushes.White, 2);
         ctx.DrawLine(head, new Point(X(Position), 0), new Point(X(Position), Bounds.Height));
     }
 
     public static string Fmt(double t) => $"{(int)(t / 60)}:{t % 60:00.0}".Replace(',', '.');
 
-    protected override void OnPointerPressed(PointerPressedEventArgs e) { _drag = true; e.Pointer.Capture(this); Seek?.Invoke(this, T(e.GetPosition(this).X)); }
-    protected override void OnPointerMoved(PointerEventArgs e) { if (_drag) Seek?.Invoke(this, T(e.GetPosition(this).X)); }
-    protected override void OnPointerReleased(PointerReleasedEventArgs e) { _drag = false; e.Pointer.Capture(null); }
+    /// <summary>Track index at a y position, or -1.</summary>
+    public static int LaneAt(double y) => y < StripBottom + 4 ? -1 : (int)((y - StripBottom - 4) / (LaneH + LaneGap));
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        var p = e.GetPosition(this);
+        e.Pointer.Capture(this);
+        var i = LaneAt(p.Y);
+        if (i >= 0 && i < _lanes.Count)
+        {
+            var l = _lanes[i];
+            var x0 = X(l.Start); var x1 = X(Math.Min(Duration, l.End));
+            _laneDrag = Math.Abs(p.X - x0) <= 6 ? LaneDrag.Start : Math.Abs(p.X - x1) <= 6 ? LaneDrag.End : p.X > x0 && p.X < x1 ? LaneDrag.Move : LaneDrag.None;
+            _dragLane = l; _dragT0 = T(p.X);
+            LaneSelected?.Invoke(this, l.Id);
+            if (_laneDrag == LaneDrag.None) { _drag = true; Seek?.Invoke(this, T(p.X)); }
+            return;
+        }
+        _drag = true;
+        Seek?.Invoke(this, T(p.X));
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        var p = e.GetPosition(this);
+        if (_laneDrag != LaneDrag.None && _dragLane is { } l)
+        {
+            var t = T(p.X);
+            const double min = 0.1;
+            var end = Math.Min(Duration, l.End);
+            (double s, double en) r = _laneDrag switch
+            {
+                LaneDrag.Start => (Math.Clamp(t, 0, end - min), end),
+                LaneDrag.End => (l.Start, Math.Clamp(t, l.Start + min, Duration)),
+                _ => Shift(l.Start, end, t - _dragT0),
+            };
+            LaneEdited?.Invoke(this, (l.Id, Math.Round(r.s, 2), Math.Round(r.en, 2)));
+            return;
+        }
+        if (_drag) { Seek?.Invoke(this, T(p.X)); return; }
+        // cursor feedback over tracks
+        var i = LaneAt(p.Y);
+        if (i >= 0 && i < _lanes.Count)
+        {
+            var ln = _lanes[i]; var x0 = X(ln.Start); var x1 = X(Math.Min(Duration, ln.End));
+            Cursor = new Cursor(Math.Abs(p.X - x0) <= 6 || Math.Abs(p.X - x1) <= 6 ? StandardCursorType.SizeWestEast : p.X > x0 && p.X < x1 ? StandardCursorType.SizeAll : StandardCursorType.Hand);
+        }
+        else Cursor = new Cursor(StandardCursorType.Hand);
+    }
+
+    private (double, double) Shift(double s, double e, double dt)
+    {
+        var len = e - s;
+        var ns = Math.Clamp(s + dt, 0, Math.Max(0, Duration - len));
+        return (ns, ns + len);
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        var wasLane = _laneDrag != LaneDrag.None ? _dragLane : null;
+        _drag = false; _laneDrag = LaneDrag.None; _dragLane = null;
+        e.Pointer.Capture(null);
+        if (wasLane is not null) LaneSelected?.Invoke(this, wasLane.Id);
+    }
 }

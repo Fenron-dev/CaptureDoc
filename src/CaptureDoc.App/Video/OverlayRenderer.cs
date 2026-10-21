@@ -27,8 +27,9 @@ public static class OverlayRenderer
         var spec = new OverlaySpec();
         var page = overlay.Page;
         var i = 0;
-        foreach (var layer in page.Layers)
+        for (var order = 0; order < page.Layers.Count; order++)
         {
+            var layer = page.Layers[order];
             if (!layer.Visible || layer is ImageLayer { IsBackground: true }) continue;
             var (start, end) = TimeOf(layer);
             switch (layer)
@@ -40,7 +41,7 @@ public static class OverlayRenderer
                     spec.Effects.Add(new RegionEffect
                     {
                         Kind = rd.Mode switch { RedactMode.Pixelate => RegionEffectKind.Pixelate, RedactMode.Blur => RegionEffectKind.Blur, _ => RegionEffectKind.Blackout },
-                        X = r.X, Y = r.Y, W = r.W, H = r.H, Strength = rd.Strength, Color = "0x" + rd.Fill.ToHex()[1..7], Start = start, End = end,
+                        X = r.X, Y = r.Y, W = r.W, H = r.H, Strength = rd.Strength, Color = "0x" + rd.Fill.ToHex()[1..7], Start = start, End = end, Order = order,
                     });
                     continue;
                 }
@@ -48,7 +49,7 @@ public static class OverlayRenderer
                 {
                     var s = Clamp(mg.Source.Normalize(), page); var d = Clamp(mg.Rect.Normalize(), page);
                     if (s.W >= 2 && s.H >= 2 && d.W >= 2 && d.H >= 2)
-                        spec.Effects.Add(new RegionEffect { Kind = RegionEffectKind.Magnify, X = s.X, Y = s.Y, W = s.W, H = s.H, DX = d.X, DY = d.Y, DW = d.W & ~1, DH = d.H & ~1, Start = start, End = end });
+                        spec.Effects.Add(new RegionEffect { Kind = RegionEffectKind.Magnify, X = s.X, Y = s.Y, W = s.W, H = s.H, DX = d.X, DY = d.Y, DW = d.W & ~1, DH = d.H & ~1, Start = start, End = end, Order = order });
                     break; // the border is rendered below as a PNG
                 }
             }
@@ -56,7 +57,7 @@ public static class OverlayRenderer
             if (png is null) continue;
             var path = Path.Combine(workDir, $"layer-{i++:000}.png");
             File.WriteAllBytes(path, png);
-            var item = new ImageOverlay { PngPath = path, X = origin.X, Y = origin.Y, Start = start, End = end };
+            var item = new ImageOverlay { PngPath = path, X = origin.X, Y = origin.Y, Start = start, End = end, Order = order };
             if (layer.Timing is { Keyframes.Count: > 0 } tm)
             {
                 var b0 = layer.Bounds;

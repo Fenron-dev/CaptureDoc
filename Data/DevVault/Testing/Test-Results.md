@@ -6,13 +6,13 @@ date: 2026-10-21
 
 Umgebung: Windows 11 Home 10.0.26200, 1 Monitor 1600×900 physisch (Skalierung ≈ 110 %), .NET SDK 10.0.402.
 
-## Automatisiert (tatsächlich ausgeführt, Stand 0.3.0, 2026-10-21)
+## Automatisiert (tatsächlich ausgeführt, Stand 0.3.1, 2026-10-21)
 | Projekt | Ergebnis |
 |---|---|
 | CaptureDoc.Core.Tests | **94/94 bestanden** (u. a. Video-Schritte, Projektformat v2, Einzelinstanz/IPC) |
 | CaptureDoc.Rendering.Tests | **17/17 bestanden** (u. a. PDF, Rahmen/Schatten, Drag-Cache pixelgleich, Performance) |
-| CaptureDoc.Media.Tests (echtes FFmpeg 9.0.2) | **22/22 bestanden** (u. a. Overlays/Zoom pixelgeprüft, Stream Copy) |
-| CaptureDoc.App.Tests (Avalonia Headless) | **4/4 bestanden** (Schnitte per Tastatur setzen/entfernen, Video-Schritt im Studio, Video-Schritt-Rendering, GDI-Aufnahme + Maus-Hook) |
+| CaptureDoc.Media.Tests (echtes FFmpeg 9.0.2) | **24/24 bestanden** (u. a. Overlays/Zoom pixelgeprüft, Schwärzung nur über tieferen Ebenen, Schwärzung bleibt beim Zoom auf dem Inhalt, Stream Copy) |
+| CaptureDoc.App.Tests (Avalonia Headless) | **5/5 bestanden** (Schnitte per Tastatur, Annotations-Spuren per Maus ziehen + ▲/▼, Video-Schritt im Studio, Video-Schritt-Rendering, GDI-Aufnahme + Maus-Hook) |
 
 ## 0.3.0 – nicht geprüft
 - Oberfläche der neuen Funktionen per Bildschirmsteuerung (für diese Version nicht freigegeben) – nur headless.

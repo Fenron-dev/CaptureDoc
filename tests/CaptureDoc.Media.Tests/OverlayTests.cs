@@ -136,6 +136,45 @@ public class OverlayIntegrationTests
     }
 
     [Fact]
+    public async Task Blackout_only_covers_layers_below_it()
+    {
+        if (Tools is not { } t) return;
+        using var d = new TempDir();
+        var src = await GreyClipAsync(t, d.Path);
+        var png = await RedPngAsync(t, d.Path);
+        var o = new OverlaySpec();
+        // red marker A (order 0) below the blackout, marker B (order 2) above it – both inside the box
+        o.Images.Add(new ImageOverlay { PngPath = png, X = 20, Y = 20, Order = 0 });
+        o.Effects.Add(new RegionEffect { Kind = RegionEffectKind.Blackout, X = 0, Y = 0, W = 160, H = 120, Order = 1 });
+        o.Images.Add(new ImageOverlay { PngPath = png, X = 100, Y = 60, Order = 2 });
+        var outFile = d.File("order.mp4");
+        var r = await new VideoExporter(t).ExportMp4Async(src, outFile, new ClipRange { Start = 0, End = 2 }, new Mp4Settings { Quality = VideoQuality.High, Overlay = o });
+        Assert.True(r.Success, r.Message);
+        var a = await PixelAsync(t, outFile, 1.0, 40, 40);
+        Assert.True(a.r < 30, $"marker below blackout must be hidden {a}");
+        var b = await PixelAsync(t, outFile, 1.0, 120, 80);
+        Assert.True(b.r > 180 && b.g < 80, $"marker above blackout stays visible {b}");
+    }
+
+    [Fact]
+    public async Task Blackout_stays_on_its_content_when_zoomed()
+    {
+        if (Tools is not { } t) return;
+        using var d = new TempDir();
+        var src = await GreyClipAsync(t, d.Path);
+        var o = new OverlaySpec();
+        o.Effects.Add(new RegionEffect { Kind = RegionEffectKind.Blackout, X = 0, Y = 0, W = 40, H = 40 });
+        o.Zoom.Add(new ZoomPoint(0, 0, 0, 160, 120));   // 2x on the top-left quarter the whole time
+        var outFile = d.File("zb.mp4");
+        var r = await new VideoExporter(t).ExportMp4Async(src, outFile, new ClipRange { Start = 0, End = 2 }, new Mp4Settings { Quality = VideoQuality.High, Overlay = o });
+        Assert.True(r.Success, r.Message);
+        var inside = await PixelAsync(t, outFile, 1.0, 60, 60);   // source 30/30 → zoomed 60/60
+        Assert.True(inside.r < 30, $"zoomed blackout {inside}");
+        var outside = await PixelAsync(t, outFile, 1.0, 100, 100); // source 50/50 → grey
+        Assert.True(outside.r > 90, $"{outside}");
+    }
+
+    [Fact]
     public async Task Pixelate_and_magnify_effects_render()
     {
         if (Tools is not { } t) return;

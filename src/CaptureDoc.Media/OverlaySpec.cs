@@ -16,6 +16,8 @@ public sealed class ImageOverlay
     public double End { get; init; } = double.MaxValue;
     /// <summary>Optional movement; interpolated linearly, X/Y used if empty.</summary>
     public List<PathPoint> Path { get; init; } = new();
+    /// <summary>Stacking position (layer index, bottom = 0). Equal values: effects before images.</summary>
+    public int Order { get; init; }
 }
 
 public enum RegionEffectKind { Blackout, Pixelate, Blur, Magnify }
@@ -37,6 +39,8 @@ public sealed class RegionEffect
     public string Color { get; init; } = "black";
     public double Start { get; init; }
     public double End { get; init; } = double.MaxValue;
+    /// <summary>Stacking position (layer index). An effect only changes what lies below it.</summary>
+    public int Order { get; init; }
 }
 
 /// <summary>Visible part of the frame at a time (zoom/pan).</summary>
@@ -82,19 +86,31 @@ public sealed class OverlaySpec
         var cur = input; var n = 0;
         string Next() => $"[o{n++}]";
 
-        if (Zoom.Count > 0)
-        {
-            // zoompan works per input frame; 'it' = input timestamp in seconds
-            var z = Zoom.Select(p => (p.Time - offset, width / Math.Max(1, p.W))).ToList();
-            var x = Zoom.Select(p => (p.Time - offset, p.X)).ToList();
-            var y = Zoom.Select(p => (p.Time - offset, p.Y)).ToList();
-            var o = Next();
-            sb.Append($"{cur}zoompan=z='{Lerp(z, "it")}':x='{Lerp(x, "it")}':y='{Lerp(y, "it")}':d=1:s={width}x{height}:fps={F(fps)},setpts=N/({F(fps)})/TB{o};");
-            cur = o;
-        }
+        // layer order like the screenshot editor: an effect (redaction) only changes what lies below it.
+        // Stable sort: equal Order → effects first, then images, each in list order.
+        var ops = Effects.Select((e, i) => (order: e.Order, kind: 0, idx: i))
+            .Concat(Images.Select((im, i) => (order: im.Order, kind: 1, idx: i)))
+            .OrderBy(o => o.order).ThenBy(o => o.kind).ThenBy(o => o.idx).ToList();
 
-        foreach (var e in Effects)
+        foreach (var op in ops)
         {
+            if (op.kind == 1)
+            {
+                var im = Images[op.idx];
+                var ien = Enable(im.Start, im.End, offset);
+                string xs, ys;
+                if (im.Path.Count > 0)
+                {
+                    xs = Lerp(im.Path.Select(p => (p.Time - offset, p.X)).ToList());
+                    ys = Lerp(im.Path.Select(p => (p.Time - offset, p.Y)).ToList());
+                }
+                else { xs = F(im.X); ys = F(im.Y); }
+                var io = Next();
+                sb.Append($"{cur}[{op.idx + 1}:v]overlay=x='{xs}':y='{ys}':enable='{ien}':eof_action=repeat{io};");
+                cur = io;
+                continue;
+            }
+            var e = Effects[op.idx];
             var en = Enable(e.Start, e.End, offset);
             if (e.Kind == RegionEffectKind.Blackout)
             {
@@ -115,19 +131,15 @@ public sealed class OverlaySpec
             cur = o2;
         }
 
-        for (var i = 0; i < Images.Count; i++)
+        // zoom last: effects and annotations are placed in source pixels and must move with the content
+        if (Zoom.Count > 0)
         {
-            var im = Images[i];
-            var en = Enable(im.Start, im.End, offset);
-            string xs, ys;
-            if (im.Path.Count > 0)
-            {
-                xs = Lerp(im.Path.Select(p => (p.Time - offset, p.X)).ToList());
-                ys = Lerp(im.Path.Select(p => (p.Time - offset, p.Y)).ToList());
-            }
-            else { xs = F(im.X); ys = F(im.Y); }
+            // zoompan works per input frame; 'it' = input timestamp in seconds
+            var z = Zoom.Select(p => (p.Time - offset, width / Math.Max(1, p.W))).ToList();
+            var x = Zoom.Select(p => (p.Time - offset, p.X)).ToList();
+            var y = Zoom.Select(p => (p.Time - offset, p.Y)).ToList();
             var o = Next();
-            sb.Append($"{cur}[{i + 1}:v]overlay=x='{xs}':y='{ys}':enable='{en}':eof_action=repeat{o};");
+            sb.Append($"{cur}zoompan=z='{Lerp(z, "it")}':x='{Lerp(x, "it")}':y='{Lerp(y, "it")}':d=1:s={width}x{height}:fps={F(fps)},setpts=N/({F(fps)})/TB{o};");
             cur = o;
         }
         sb.Append($"{cur}null[ov]");

@@ -145,6 +145,57 @@ public class UiTests
     }
 
     [AvaloniaFact]
+    public void Annotation_tracks_can_be_dragged_and_reordered()
+    {
+        if (MakeClip() is not { } clip) return;
+        var overlay = new VideoOverlay { Page = new Core.Model.Page { Width = 320, Height = 240, Background = ColorRgba.Transparent } };
+        var step = new StepLayer { Center = new PointD(35, 35), Number = 1, Name = "Nummer", Timing = new LayerTiming { StartSeconds = 2, EndSeconds = 5 } };
+        var redact = new RedactLayer { Rect = new RectD(0, 0, 100, 100), Name = "Schwärzung", Timing = new LayerTiming { StartSeconds = 0, EndSeconds = 8 } };
+        overlay.Page.Layers.Add(step);
+        overlay.Page.Layers.Add(redact);       // on top → would cover the number
+        var gs = new GuideStep { Title = "V", Video = new VideoRef { Path = clip, Start = 0, End = 8, Overlay = overlay } };
+        var w = new VideoEditorWindow(App, clip, gs);
+        w.Show();
+        PumpUntil(() => Texts(w).Any(t => t.Contains("320×240")));
+        Pump(300);
+        var tl = w.GetVisualDescendants().OfType<TimelineControl>().Single();
+        Assert.Equal(2, tl.Lanes.Count);
+        Assert.Equal(redact.Id, tl.Lanes[0].Id);            // top layer first
+        Assert.True(tl.Lanes[0].IsEffect);
+
+        // drag the end edge of the number track (lane 1, 2..5 s) to 7 s
+        double X(double t) => tl.Bounds.Width * t / 8.0;
+        var y = TimelineControl.StripBottom + 4 + (TimelineControl.LaneH + TimelineControl.LaneGap) * 1 + TimelineControl.LaneH / 2;
+        Point P(double t) => tl.TranslatePoint(new Point(X(t), y), w)!.Value;
+        w.MouseDown(P(5), MouseButton.Left);
+        w.MouseMove(P(6));
+        w.MouseMove(P(7));
+        w.MouseUp(P(7), MouseButton.Left);
+        Pump(200);
+        Assert.InRange(step.Timing!.EndSeconds, 6.8, 7.2);
+        Assert.Equal(2, step.Timing.StartSeconds, 2);
+
+        // move the whole bar 1 s earlier
+        w.MouseDown(P(4), MouseButton.Left);
+        w.MouseMove(P(3.5));
+        w.MouseMove(P(3));
+        w.MouseUp(P(3), MouseButton.Left);
+        Pump(200);
+        Assert.InRange(step.Timing.StartSeconds, 0.8, 1.2);
+        Assert.InRange(step.Timing.EndSeconds - step.Timing.StartSeconds, 4.9, 5.1);
+
+        // ▼ on the redaction card (first card) puts it below the number
+        var down = w.GetVisualDescendants().OfType<Button>().First(b => (b.Content as string) == "▼");
+        down.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Pump(200);
+        Assert.True(overlay.Page.Layers.IndexOf(redact) < overlay.Page.Layers.IndexOf(step));
+        Assert.Equal(step.Id, tl.Lanes[0].Id);
+        var spec = OverlayRenderer.Prepare(new ProjectSession(new CaptureProject(), new Core.Serialization.AssetStore()), overlay, Path.Combine(Root, "ord-" + Guid.NewGuid().ToString("N")));
+        Assert.True(spec.Effects.Single().Order < spec.Images.Single().Order);   // number drawn after the blackout
+        w.Close();
+    }
+
+    [AvaloniaFact]
     public async Task Video_step_with_timed_annotation_renders_for_export()
     {
         if (MakeClip() is not { } clip) return;

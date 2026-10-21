@@ -47,6 +47,7 @@ public sealed class VideoEditorWindow : Window
     private MediaInfo? _media;
     private CancellationTokenSource? _hiResCts;
     private (double X, double Y)? _zoomCenter;
+    private Guid? _selectedLayer;
 
     // annotations: belong to the guide step (studio session) or live in an in-memory session
     private readonly ProjectSession _overlaySession;
@@ -75,6 +76,9 @@ public sealed class VideoEditorWindow : Window
         _play = Ui.Button("▶", TogglePlay, "Abspielen / Pause (Leertaste)");
         _playTimer.Tick += (_, _) => Step();
         _timeline.Seek += (_, t) => SeekTo(t, hiRes: !_playTimer.IsEnabled);
+        _zoomFactor.PropertyChanged += (_, e) => { if (e.Property == RangeBase.ValueProperty && _zoomFactorLabel is { } zl) zl.Text = $"{_zoomFactor.Value:0.0}×"; };
+        _timeline.LaneEdited +=(_, e) => OnLaneEdited(e.Id, e.Start, e.End);
+        _timeline.LaneSelected += (_, id) => { _selectedLayer = id; BuildSide(); Refresh(); };
 
         var top = new WrapPanel { Margin = new Thickness(8, 6) };
         top.Children.Add(Ui.Button("⇩ MP4…", async () => await ExportAsync(gif: false), "Als MP4 exportieren (inkl. Annotationen und Zoom)", accent: true));
@@ -265,7 +269,8 @@ public sealed class VideoEditorWindow : Window
     {
         _side.Children.Clear();
         _side.Children.Add(Ui.Label("Annotationen", 14, bold: true));
-        _side.Children.Add(Ui.Label("Pfeile, Texte, Schritte, Infoboxen, Schwärzungen … mit demselben Editor wie bei Screenshots. Jede Ebene hat ein Zeitfenster.", 11, opacity: 0.65));
+        _side.Children.Add(Ui.Label("Pfeile, Texte, Schritte, Infoboxen, Schwärzungen … mit demselben Editor wie bei Screenshots. Jede Ebene hat ein Zeitfenster – auch als Balken unter der Timeline (ziehen = verschieben, Ränder = Beginn/Ende).", 11, opacity: 0.65));
+        _side.Children.Add(Ui.Label("Reihenfolge: oben in der Liste = vorne. Eine Schwärzung verdeckt nur, was unter ihr liegt – Nummern/Pfeile darüber bleiben sichtbar.", 11, opacity: 0.65));
         _side.Children.Add(Ui.Button("✎ Annotationen bearbeiten…", async () => await EditAnnotationsAsync(), "Öffnet den Ebenen-Editor mit dem aktuellen Videobild als Vorlage", accent: true));
 
         var layers = _overlay.Page.Layers.Where(l => l is not ImageLayer { IsBackground: true }).Reverse().ToList();
@@ -292,24 +297,32 @@ public sealed class VideoEditorWindow : Window
             }
             move.IsCheckedChanged += (_, _) => UpdateMove();
             tx.ValueChanged += (_, _) => UpdateMove(); ty.ValueChanged += (_, _) => UpdateMove();
+            var selected = _selectedLayer == layer.Id;
             var card = new Border
             {
-                BorderBrush = new SolidColorBrush(Color.FromArgb(60, 128, 128, 128)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4), Padding = new Thickness(6),
+                BorderBrush = selected ? Brushes.Gold : new SolidColorBrush(Color.FromArgb(60, 128, 128, 128)), BorderThickness = new Thickness(selected ? 2 : 1), CornerRadius = new CornerRadius(4), Padding = new Thickness(6),
                 Child = Ui.Column(4,
-                    Ui.Row(Ui.Label((string.IsNullOrWhiteSpace(layer.Name) ? layer.Kind : layer.Name) + (layer is RedactLayer ? " ⚠" : ""), 12, bold: true),
-                        Ui.Button("🗑", () => { _overlay.Page.Layers.Remove(layer); Changed(); BuildSide(); }, "Annotation löschen")),
+                    Ui.Row(Ui.Label(LayerTitle(layer), 12, bold: true),
+                        Ui.Button("▲", () => MoveLayer(layer, +1), "Nach vorne (über die Ebene darüber)"),
+                        Ui.Button("▼", () => MoveLayer(layer, -1), "Nach hinten (unter die Ebene darunter)"),
+                        Ui.Button("🗑", () => { _overlay.Page.Layers.Remove(layer); Changed(); BuildSide(); Refresh(); }, "Annotation löschen")),
                     Ui.Row(Ui.Label("von", 11), start, Ui.Button("⇤", () => { start.Value = (decimal)Math.Round(_pos, 2); }, "Beginn = Abspielposition")),
                     Ui.Row(Ui.Label("bis", 11), end, Ui.Button("⇥", () => { end.Value = (decimal)Math.Round(_pos, 2); }, "Ende = Abspielposition")),
                     move,
                     Ui.Row(Ui.Label("Ziel X", 11), tx, Ui.Label("Y", 11), ty)),
             };
+            card.PointerPressed += (_, _) => { if (_selectedLayer != layer.Id) { _selectedLayer = layer.Id; Refresh(); } };
             _side.Children.Add(card);
         }
 
         _side.Children.Add(new Separator());
         _side.Children.Add(Ui.Label("Zoom & Schwenk", 14, bold: true));
         _side.Children.Add(Ui.Label("Ins Vorschaubild klicken = Zoom-Mittelpunkt. Zwischen Keyframes wird weich übergeblendet.", 11, opacity: 0.65));
-        _side.Children.Add(Ui.Row(Ui.Label("Faktor", 11), _zoomFactor, Ui.Label($"{_zoomFactor.Value:0.0}×", 11)));
+        // the slider is reused across rebuilds → detach it from the previous row first
+        if (_zoomFactor.Parent is Panel oldRow) oldRow.Children.Remove(_zoomFactor);
+        var factorLabel = Ui.Label($"{_zoomFactor.Value:0.0}×", 11);
+        _zoomFactorLabel = factorLabel;
+        _side.Children.Add(Ui.Row(Ui.Label("Faktor", 11), _zoomFactor, factorLabel));
         _side.Children.Add(Ui.Row(
             Ui.Button("🔍 Keyframe hier", () => AddZoomKey(_zoomFactor.Value), "Zoom an der aktuellen Abspielposition"),
             Ui.Button("1× hier", () => AddZoomKey(1), "Hier wieder ganz herauszoomen")));
@@ -321,7 +334,49 @@ public sealed class VideoEditorWindow : Window
                 Ui.Button($"{TimelineControl.Fmt(key.TimeSeconds)}  {factor:0.0}×", () => SeekTo(key.TimeSeconds, true), "Zum Keyframe springen"),
                 Ui.Button("✕", () => { _overlay.Zoom.Remove(key); Changed(); BuildSide(); }, "Keyframe löschen")));
         }
-        _zoomFactor.PropertyChanged += (_, e) => { if (e.Property == RangeBase.ValueProperty && _side.Children.Count > 0) { } };
+    }
+
+    private TextBlock? _zoomFactorLabel;
+
+    private static string LayerTitle(Layer l) => (string.IsNullOrWhiteSpace(l.Name) ? l.Kind : l.Name) + (l is RedactLayer ? " ⚠" : "");
+
+    private List<Layer> AnnotationLayers() => _overlay.Page.Layers.Where(l => l is not ImageLayer { IsBackground: true }).ToList();
+
+    /// <summary>Moves a layer one step forward (+1) or backward (-1) among the annotations; the reference frame stays at the bottom.</summary>
+    private void MoveLayer(Layer layer, int dir)
+    {
+        var layers = _overlay.Page.Layers;
+        var i = layers.IndexOf(layer);
+        var j = i + dir;
+        if (i < 0 || j < 0 || j >= layers.Count || layers[j] is ImageLayer { IsBackground: true }) return;
+        (layers[i], layers[j]) = (layers[j], layers[i]);
+        _selectedLayer = layer.Id;
+        Changed(); BuildSide(); Refresh();
+    }
+
+    private void OnLaneEdited(Guid id, double start, double end)
+    {
+        if (_overlay.Page.Layers.FirstOrDefault(l => l.Id == id) is not { } layer) return;
+        var tm = layer.Timing ??= new LayerTiming();
+        tm.StartSeconds = start; tm.EndSeconds = end;
+        if (tm.Keyframes.Count >= 2)
+        {
+            var k = tm.Keyframes.OrderBy(x => x.TimeSeconds).ToList();
+            k[0].TimeSeconds = start; k[^1].TimeSeconds = end;
+        }
+        _selectedLayer = id;
+        Refresh();
+        UpdateOverlayPreview();
+    }
+
+    private IReadOnlyList<TimelineLane> BuildLanes()
+    {
+        var dur = _media?.Duration ?? 0;
+        return AnnotationLayers().AsEnumerable().Reverse().Select(l =>
+        {
+            var (s, e) = l.Timing is { } t ? (t.StartSeconds, t.EndSeconds > t.StartSeconds ? t.EndSeconds : dur) : (0, dur);
+            return new TimelineLane(l.Id, LayerTitle(l), s, e, l is RedactLayer or MagnifierLayer, l.Id == _selectedLayer);
+        }).ToList();
     }
 
     private static NumericUpDown Num(double v, double min = 0, double max = 100000) =>
@@ -435,6 +490,7 @@ public sealed class VideoEditorWindow : Window
     {
         RebuildCutList();
         _timeline.Position = _pos; _timeline.Range = _clip; _timeline.PendingCut = _cutA;
+        _timeline.Lanes = BuildLanes();
         _timeline.InvalidateVisual();
         _timeLabel.Text = TimelineControl.Fmt(_pos) + " / " + TimelineControl.Fmt(_media?.Duration ?? 0);
         _rangeLabel.Text = $"Clip {TimelineControl.Fmt(_clip.Start)} – {TimelineControl.Fmt(_clip.End)}, {_clip.Cuts.Count} Schnitt(e) → Ergebnis {_clip.KeptDuration:0.0} s" +

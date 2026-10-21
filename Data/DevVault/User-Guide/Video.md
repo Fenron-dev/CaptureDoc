@@ -15,6 +15,8 @@ Voraussetzung: FFmpeg. Portabel `ffmpeg.exe` + `ffprobe.exe` nach `Runtime\ffmpe
 Aufnahmen liegen in `Data/Media/Aufnahmen`.
 
 ## Annotationen, Zoom und Klicks
+- Unter der Timeline hat jede Annotation eine **Spur** (oben = vorderste Ebene). Balken ziehen = zeitlich verschieben, linken/rechten Rand ziehen = Beginn/Ende. Graue Balken mit ■ sind Schwärzungen/Lupen.
+- **Reihenfolge** in der Seitenleiste mit ▲/▼ (oder im Ebenen-Editor). Eine Schwärzung verdeckt nur Ebenen *unter* ihr – Nummern oder Pfeile darüber bleiben sichtbar. Zoom wirkt auf alles zusammen, Schwärzungen bleiben auf ihrem Inhalt.
 - Seitenleiste **Annotationen**: „✎ Bearbeiten“ öffnet das aktuelle Bild im Ebeneneditor; jede Ebene bekommt eine Von/Bis-Zeit und optional eine Bewegung (Start-/Endposition). Schwärzen/Verpixeln wirken auf die Videopixel.
 - **Zoom**: Keyframe an der Abspielmarke setzen (Stärke, Mittelpunkt); zwischen Keyframes wird weich gefahren.
 - Ist „Mausklicks markieren“ in den Einstellungen aktiv, erscheinen Klicks als Ringe – sie sind normale Annotationen (verschieben, löschen).

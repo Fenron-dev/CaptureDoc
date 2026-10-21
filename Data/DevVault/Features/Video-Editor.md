@@ -19,7 +19,8 @@ Bereich/Fenster/Bildschirm, Countdown, roter Rahmen + Timer-Leiste (aus der Aufn
 - Jede Ebene hat **von/bis** (Buttons ⇤/⇥ = Abspielposition) und optional **Bewegung** bis zu einer Zielposition (Keyframes).
 - **Zoom & Schwenk:** Klick ins Vorschaubild setzt den Mittelpunkt, „🔍 Keyframe hier“ mit Faktor 1–4×, weiche Übergänge.
 - Live-Vorschau der Annotationen und des Zoom-Ausschnitts über dem Video.
-- Export: Text/Pfeile/Formen/Schritte als transparente PNG-Overlays (`overlay … enable='between(t,a,b)'`, Bewegung über x/y-Ausdrücke), Schwärzen/Verpixeln/Weichzeichnen/Lupe direkt auf den Videopixeln, Zoom über `zoompan` (Zeitstempel danach neu gesetzt).
+- **Spuren** unter der Timeline (seit 0.3.1): ein Balken je Annotation, ziehen/Ränder ändern das Zeitfenster; ▲/▼ ändert die Ebenenreihenfolge.
+- Export: Text/Pfeile/Formen/Schritte als transparente PNG-Overlays (`overlay … enable='between(t,a,b)'`, Bewegung über x/y-Ausdrücke), Schwärzen/Verpixeln/Weichzeichnen/Lupe direkt auf den Videopixeln, Zoom über `zoompan` (Zeitstempel danach neu gesetzt). **Reihenfolge der Filterkette = Ebenenreihenfolge** (Effekte und PNGs verschachtelt, eine Schwärzung wirkt nur auf darunterliegende Ebenen); **Zoom als letzter Schritt**, damit Schwärzungen und Annotationen auf ihrem Inhalt bleiben.
 
 ## In die Anleitung
 „🎬 Video → Anleitung“ legt einen **Video-Schritt** an (Clip + Schnitte + Annotationen, Posterbild als bearbeitbare Seite). Im Studio: Format MP4/GIF, max. Breite, Ziel-MB, Ton; „✂ Schneiden / Annotieren…“ öffnet den Clip wieder. Export: Obsidian/Markdown `![[…mp4|700]]`, HTML `<video controls poster>`, PDF als Standbild mit Hinweis. Siehe [[Obsidian-Export]].
