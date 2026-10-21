@@ -140,6 +140,6 @@ public class VideoStepTests
         var back = ProjectFile.Load(file).Project.Guide.Steps[0].Video!;
         Assert.Equal(VideoOutputFormat.Gif, back.Format);
         Assert.Equal(7, back.KeptDuration, 3);
-        Assert.Equal(2, ProjectFile.TryReadManifest(file)!.FormatVersion);
+        Assert.Equal(CaptureProject.CurrentFormatVersion, ProjectFile.TryReadManifest(file)!.FormatVersion);
     }
 }

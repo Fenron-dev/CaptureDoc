@@ -3,8 +3,8 @@ namespace CaptureDoc.Core.Model;
 /// <summary>Root of a .capturedoc file.</summary>
 public sealed class CaptureProject
 {
-    /// <summary>1 = images only (0.1). 2 = video references in guide steps (0.2+).</summary>
-    public const int CurrentFormatVersion = 2;
+    /// <summary>1 = images only (0.1). 2 = video references in guide steps (0.2+). 3 = multi-track video sequences (0.5+).</summary>
+    public const int CurrentFormatVersion = 3;
 
     public int FormatVersion { get; set; } = CurrentFormatVersion;
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -143,9 +143,15 @@ public sealed class VideoRef
     /// <summary>Soft size target for the exported file.</summary>
     public long? MaxBytes { get; set; } = 20L * 1024 * 1024;
     public bool IncludeAudio { get; set; } = true;
-    /// <summary>Time-based annotations rendered into the exported video (Phase 7).</summary>
+    /// <summary>Time-based annotations rendered into the exported video (Phase 7). With a <see cref="Sequence"/> their times are sequence times.</summary>
     public VideoOverlay? Overlay { get; set; }
-    public double KeptDuration => Math.Max(0, End - Start - Cuts.Sum(c => Math.Max(0, Math.Min(c.To, End) - Math.Max(c.From, Start))));
+    /// <summary>
+    /// Multi-track edit (0.5+). When set, <see cref="Start"/>/<see cref="End"/>/<see cref="Cuts"/> are not used any more
+    /// and <see cref="Path"/> is only the main video (poster, display).
+    /// </summary>
+    public VideoSequence? Sequence { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public double KeptDuration => Sequence is { } seq ? seq.Duration : Math.Max(0, End - Start - Cuts.Sum(c => Math.Max(0, Math.Min(c.To, End) - Math.Max(c.From, Start))));
 }
 
 public sealed class TimeCut

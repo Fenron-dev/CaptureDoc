@@ -3,6 +3,10 @@ tags: [fortschritt]
 ---
 # Fortschritt
 
+## 2026-10-21 – 0.5.0: Mehrspur-Schnitt
+Nutzerwunsch: schneiden ohne Einbrennen, Teile löschen/auf andere Ebenen verschieben, weitere Videos importieren und überlagern. Umgesetzt als nichtdestruktive Sequenz (`VideoSequence` → Spuren → Clips) mit Ripple-Operationen, die Annotationen und Zoom mitführen; Export über einen FFmpeg-Filtergraphen; ein gemeinsamer Undo-Verlauf für Schnitt und Annotationen.
+**Getestet**: 160 automatisierte Tests ([[Test-Results]]), u. a. Sequenz-Rendering pixelgeprüft (Lücken, Bild-im-Bild, Clip-Grenzen, Annotationen/Schwärzung über der Sequenz, Ton), Schnittlogik als Unit-Tests, Teilen/Löschen/Undo/Import/Spurwechsel headless. **Nicht geprüft**: Bedienung am echten Bildschirm.
+
 ## 2026-10-21 – 0.4.0: Video-Studio
 Nutzer-Feedback zu 0.3.1 umgesetzt: Seitenleiste nicht scrollbar (Ursache: `PropertiesPanel : ScrollViewer` ohne Control-Theme), Klickzeiten/Anzahl (Startverzögerung + Doppelklicks), Spuren sahen falsch aus (Vorschaubilder wurden über die Spuren gestreckt – neue Timeline), Annotieren direkt im Video, Layout nach Vorbild gängiger Recorder, Stift/Textmarker, Live-Zeichnen während der Aufnahme, Folien für Zusammenfassungen.
 **Getestet**: 150 automatisierte Tests ([[Test-Results]]), Layout per Headless-Rendering als Bild geprüft. **Nicht geprüft**: Bedienung am echten Bildschirm, Live-Zeichnen bei einer echten Aufnahme.

@@ -44,7 +44,9 @@ public static class VideoStepRenderer
             var ext = v.Format == VideoOutputFormat.Gif ? ".gif" : ".mp4";
             var output = Path.Combine(workDir, $"step-{i:00}{ext}");
             progress?.Report($"Video {i}/{steps.Count}: {s.Title} …");
-            var plan = await VideoRenderPlan.PrepareAsync(app, session, src, ToClip(v), v.Overlay, Path.Combine(workDir, $"prep-{i:00}"), progress, ct);
+            var plan = v.Sequence is { } seq
+                ? await VideoRenderPlan.PrepareSequenceAsync(app, session, seq, v.Overlay, Path.Combine(workDir, $"prep-{i:00}"), progress, ct)
+                : await VideoRenderPlan.PrepareAsync(app, session, src, ToClip(v), v.Overlay, Path.Combine(workDir, $"prep-{i:00}"), progress, ct);
             src = plan.Source;
             var clip = plan.Clip;
             var overlay = plan.Overlay;

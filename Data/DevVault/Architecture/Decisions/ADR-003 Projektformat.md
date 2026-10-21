@@ -25,6 +25,9 @@ thumbnail.png       gerenderte Vorschau (max. 512 px)
 - **Verschiebbar:** Keine absoluten Pfade im Projekt; Bilder sind eingebettet. Videos (Phase 6) als eingebettete Datei oder projektrelative Referenz.
 - **Datenschutz:** Originalbilder bleiben enthalten, auch wenn eine Schwärzungsebene darüber liegt → UI-Warnung beim Teilen/Speichern, siehe [[Layer-System#Schwärzung]].
 
+## Nachtrag 2026-10-21: Format 3 (Video-Sequenzen)
+`formatVersion` 3 ergänzt im Video-Schritt `sequence` (Spuren → Clips mit Quelle, In/Out, Start, Platzierung, Lautstärke, Folien). Die JSON-Migration 2→3 ist leer (nur neue optionale Felder); die inhaltliche Umstellung alter Schritte (Trim/Schnitte/Folien auf Quellzeit → Clips, Annotationen auf Sequenzzeit) macht `SequenceOps.FromLegacy` beim ersten Öffnen im Video-Editor. Ältere CaptureDoc-Versionen lehnen Format 3 mit Hinweis ab.
+
 ## Alternativen
 - Greenshot-Ansatz (PNG + Binärserialisierung, [[Greenshot]]) – nicht plattformübergreifend, keine Integritätsprüfung.
 - SQLite-Datei – robust, aber schlechter manuell inspizierbar; ZIP ist mit Standardwerkzeugen lesbar.

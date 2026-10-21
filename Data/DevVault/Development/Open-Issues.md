@@ -10,7 +10,8 @@ tags: [offen, risiken]
 | 1d | FFmpeg nicht im Paket | Entscheidung | bewusst (Lizenz/Größe), Hinweis in App und README |
 | 2 | macOS/Linux ungetestet | Testlücke | Adapter + Pakete vorhanden ([[ADR-007 macOS und Linux]]); Wayland-Video fehlt; keine Fensterliste/Hotkeys |
 | 2a | Neue 0.3.0-Oberfläche nicht per Bildschirm geprüft | Testlücke | Headless-Tests vorhanden; manueller Durchgang ausstehend |
-| 2b | Folien im Editor-Abspielen | Einschränkung | beim normalen Abspielen nur als Markierung; Vorschau im Folienmodus / im Export |
+| 2b | Editor-Vorschau ohne Ton, ~10 fps | Einschränkung | Export vollständig; Audio-Vorschau geplant |
+| 2e | Übergänge zwischen Clips | Feature | derzeit harte Schnitte; Überblenden geplant |
 | 2c | Live-Zeichnen macOS/Linux | Feature | Fenster-Ausschluss fehlt → dort deaktiviert |
 | 2d | Neue 0.4.0-Oberfläche am Bildschirm | Testlücke | nur headless + gerenderte Bilder geprüft |
 | 3 | Fensteraufnahme mit Überdeckung | Einschränkung | GDI nimmt sichtbaren Inhalt auf; WGC geplant |

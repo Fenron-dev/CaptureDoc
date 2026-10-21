@@ -99,28 +99,39 @@ public class UiTests
     }
 
     [AvaloniaFact]
-    public void Video_editor_marks_and_removes_cuts_with_keyboard()
+    public void Split_and_delete_with_keyboard_closes_the_gap_and_undo_restores_it()
     {
         if (MakeClip() is not { } clip) return;
-        var w = new VideoEditorWindow(App, clip);
+        var dir = Path.Combine(Root, "split-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var video = Path.Combine(dir, "v.mkv");
+        File.Copy(clip, video);
+        var w = new VideoEditorWindow(App, video) { Width = 1440, Height = 900 };
         w.Show();
         PumpUntil(() => Texts(w).Any(t => t.Contains("320×240")));
         Pump(300);
-        // seek to 2 s, X, seek to 4 s, X  → one cut 2..4
-        Press(w, Key.Right, PhysicalKey.ArrowRight, "");    // focus window
-        for (var i = 0; i < 2; i++) w.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
-        Press(w, Key.X, PhysicalKey.X, "x");
-        for (var i = 0; i < 2; i++) w.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
-        Press(w, Key.X, PhysicalKey.X, "x");
+        var tl = w.GetVisualDescendants().OfType<VideoTimeline>().Single();
+        // playhead to 3 s, S = split
+        for (var i = 0; i < 3; i++) w.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
+        Press(w, Key.S, PhysicalKey.S, "s");
         Pump(200);
-        Assert.Contains(Texts(w), t => t.StartsWith("Wird entfernt"));
-        Assert.Contains(Texts(w), t => t.Contains("1 Schnitt(e)"));
-        // Delete inside the cut removes it again
-        w.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.Shift);
+        Assert.Equal(2, w.Sequence.AllClips.Count());
+        Assert.Equal(8, w.Sequence.Duration, 1);
+        // click the second part on the main track and delete it
+        var second = w.Sequence.Tracks[0].Clips[1];
+        Point P(double t) => tl.TranslatePoint(new Point(tl.XOf(t), tl.TrackCenterY(0)), w)!.Value;
+        w.MouseDown(P(5), MouseButton.Left); w.MouseUp(P(5), MouseButton.Left);
+        Pump(200);
         Press(w, Key.Delete, PhysicalKey.Delete, "");
         Pump(200);
-        Assert.Contains(Texts(w), t => t.Contains("0 Schnitt(e)"));
-        Assert.DoesNotContain(Texts(w), t => t.StartsWith("Wird entfernt"));
+        Assert.Single(w.Sequence.AllClips);
+        Assert.Equal(3, w.Sequence.Duration, 1);
+        Assert.DoesNotContain(w.Sequence.AllClips, c => c.Id == second.Id);
+        // undo brings the part back, nothing was burned in
+        w.KeyPressQwerty(PhysicalKey.Z, RawInputModifiers.Control);
+        Pump(200);
+        Assert.Equal(2, w.Sequence.AllClips.Count());
+        Assert.Equal(8, w.Sequence.Duration, 1);
         w.Close();
     }
 
@@ -168,7 +179,12 @@ public class UiTests
         overlay.Zoom.Add(new ZoomKeyframe { TimeSeconds = 5, View = new RectD(40, 30, 160, 120) });
         overlay.Slides.Add(new VideoSlide { At = 6, Duration = 4, Name = "Zusammenfassung", Page = new Core.Model.Page { Width = 320, Height = 240, Background = new ColorRgba(28, 30, 38) } });
         var w = OpenEditor(clip, overlay);
+        var imp = w.ImportVideoAsync("overlay", clip);
+        PumpUntil(() => imp.IsCompleted);
         w.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
+        w.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
+        w.SelectClip(null);
+        w.SplitAtPlayhead();
         w.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
         w.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
         w.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
@@ -292,8 +308,9 @@ public class UiTests
         w.ExitSlide();
         Pump(200);
         Assert.Null(tl.SlideMode);
-        Assert.Single(tl.Slides);
-        Assert.Single(overlay.Slides);
+        Assert.Single(tl.Clips, c => c.IsSlide);
+        Assert.Empty(overlay.Slides);                       // slides are clips of the sequence now
+        Assert.Equal(16, w.Sequence.Duration, 1);           // 8 s video + 8 s summary slide
         w.Close();
     }
 
@@ -355,9 +372,45 @@ public class UiTests
         Pump(300);
         var tl = w2.GetVisualDescendants().OfType<VideoTimeline>().Single();
         Assert.Contains(tl.Lanes, l => l.Name == "Nummer");
-        Assert.Single(tl.Slides);
+        Assert.Single(tl.Clips, c => c.IsSlide);
         Assert.Contains(Texts(w2), t => t.Contains("Annotationen aus Aufnahme.capturedoc geladen"));
         w2.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task Imported_videos_can_be_appended_overlaid_and_moved_to_another_track()
+    {
+        if (MakeClip() is not { } clip) return;
+        var overlay = new VideoOverlay { Page = new Core.Model.Page { Width = 320, Height = 240, Background = ColorRgba.Transparent } };
+        var w = OpenEditor(clip, overlay);
+        var seq = w.Sequence;
+        await w.ImportVideoAsync("append", clip);
+        Pump(200);
+        Assert.Equal(16, seq.Duration, 1);
+        Assert.Equal(2, seq.Tracks[0].Clips.Count);
+        // picture-in-picture at 2 s on its own track
+        for (var i = 0; i < 2; i++) w.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
+        await w.ImportVideoAsync("overlay", clip);
+        Pump(200);
+        Assert.Equal(2, seq.Tracks.Count);
+        var pip = Assert.Single(seq.Tracks[1].Clips);
+        Assert.Equal(2, pip.Start, 1);
+        Assert.NotNull(pip.Rect);
+        Assert.True(pip.Rect!.Value.Width < 160);
+        // move the second main clip up onto a new track (overlay)
+        var second = seq.Tracks[0].Clips[1];
+        w.MoveClipToTrack(second, +1);
+        Assert.Contains(second, seq.Tracks[1].Clips);
+        Assert.Single(seq.Tracks[0].Clips);
+        // the guide export renders all tracks
+        var studio = new StudioWindow(App);
+        var session = new ProjectSession(new CaptureProject(), new Core.Serialization.AssetStore());
+        session.Project.Guide.Steps.Add(new GuideStep { Title = "Seq", Video = new VideoRef { Path = clip, Sequence = Core.Serialization.ProjectJson.Clone(seq), Overlay = overlay, MaxBytes = null } });
+        var work = Path.Combine(Root, "seq-" + Guid.NewGuid().ToString("N"));
+        var media = await Task.Run(() => VideoStepRenderer.RenderAllAsync(App, session, work, null));
+        var info = await Task.Run(() => MediaProbe.ProbeAsync(App.Ffmpeg!, media.Values.Single().FilePath));
+        Assert.InRange(info.Duration, 15.5, 16.5);
+        w.Close(); studio.Close();
     }
 
     [AvaloniaFact]

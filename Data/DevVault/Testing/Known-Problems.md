@@ -14,4 +14,5 @@ Behobene Fehler mit Ursache und Lösung: [[Changelog]]. Offene Punkte: [[Open-Is
 - **Klick-Markierungen**: Startverzögerung wird seit 0.4.0 pro Segment herausgerechnet; Rest-Ungenauigkeit etwa ein Bild.
 - **Live-Zeichnungen** sind nicht im Rohvideo, sondern erscheinen erst im Editor/Export – das ist Absicht (bearbeitbar).
 - **Textmarker im Video** werden halbtransparent überlagert, nicht „multipliziert“ wie ein echter Marker; dunkle Schrift wird dadurch leicht eingefärbt.
-- **„Schnitte anwenden“ mit Annotationen** brennt die Annotationen ein (Rückfrage); verlustfreies Schneiden ist nur ohne Annotationen/Zoom möglich und schneidet an Keyframes (± bis zu 1 s ungenau).
+- **Verlustfreies Schneiden** (Stream Copy) gibt es nur für einen einzelnen, unveränderten Clip ohne Annotationen/Zoom; Schnittpunkte liegen dann auf Keyframes (± bis zu 1 s). Mehrere Clips/Spuren werden immer neu kodiert.
+- **Video-Vorschau im Editor** ohne Ton und mit etwa 10 Bildern/s; der Export enthält Ton und volle Bildrate.

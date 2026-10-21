@@ -6,7 +6,7 @@ tags: [roadmap]
 Priorität: Quick Capture → Ebeneneditor → Wiederbearbeitbare Projekte → Obsidian-Dokumentation → Video/GIF → Plattformausbau → Erweitert.
 Status: [[Progress]] · Probleme: [[Open-Issues]] · Tests: [[Test-Results]].
 
-| Phase | Inhalt | Status (2026-10-21, v0.4.0) |
+| Phase | Inhalt | Status (2026-10-21, v0.5.0) |
 |---|---|---|
 | 1 | Analyse, Feature-Matrix, Lizenzen, Architektur, Datenmodell, DevVault | ✅ |
 | 2 | Solution, Avalonia-Shell, Portable Settings, Plattformabstraktion, Theme | ✅ |
@@ -14,7 +14,7 @@ Status: [[Progress]] · Probleme: [[Open-Issues]] · Tests: [[Test-Results]].
 | 4 | Projektformat, Gruppen, Eigenschaften, Undo/Redo, Schwärzung, Exportprofile, Drag & Drop der Ebenen | ✅ (offen: Drehen) |
 | 5 | Obsidian-Export, Vorlagen, Konflikte, Vorschau, Documentation Builder, HTML (Popup, Video), PDF | ✅ |
 | 6 | Bildschirmvideo, Pause, Schnitte (inkl. Anwenden/Entfernen), Stream Copy, MP4/GIF mit Größenlimits, Klick-Markierung | ✅ getestet |
-| 7 | Zeitgesteuerte Annotationen direkt im Video, Spuren-Timeline, Bewegung, Zoom/Pan, Folien, Live-Zeichnen, Video-Schritte | ✅ getestet (Logik, FFmpeg-Pixeltests, Headless-UI) |
+| 7 | Annotationen direkt im Video, **Mehrspur-Schnitt** (Teilen, Ripple, Import, Bild-im-Bild), Zoom/Pan, Folien, Live-Zeichnen, Video-Schritte | ✅ getestet (Logik, FFmpeg-Pixeltests, Headless-UI) |
 | 8 | macOS: screencapture, avfoundation, Zwischenablage, .app-Bundle mit Info.plist | ◐ implementiert + paketiert, **ungetestet** |
 | 9 | Linux: Wayland-Tools / X11, Zwischenablage, Paket | ◐ implementiert + paketiert, **ungetestet**; Wayland-Video fehlt |
 | 10 | Performance (Renderer 17× schneller bei Pfeilen, Drag-Cache), Pinning, Pipette, Stilvorlagen, Serien, Rahmen/Schatten | ◐ weitere Punkte siehe [[Later-Features]] |

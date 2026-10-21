@@ -6,13 +6,13 @@ date: 2026-10-21
 
 Umgebung: Windows 11 Home 10.0.26200, 1 Monitor 1600×900 physisch (Skalierung ≈ 110 %), .NET SDK 10.0.402.
 
-## Automatisiert (tatsächlich ausgeführt, Stand 0.4.0, 2026-10-21)
+## Automatisiert (tatsächlich ausgeführt, Stand 0.5.0, 2026-10-21)
 | Projekt | Ergebnis |
 |---|---|
-| CaptureDoc.Core.Tests | **95/95 bestanden** (u. a. Video-Schritte, Folien + Textmarker speichern/laden, Projektformat v2, Einzelinstanz/IPC) |
+| CaptureDoc.Core.Tests | **102/102 bestanden** (u. a. Schnittlogik: Teilen, Ripple-Löschen/-Einfügen mit Annotationen und Zoom, Trimmen, mitwandernde Annotationen, Umstellung alter Projekte; Folien + Textmarker speichern/laden, Projektformat v3) |
 | CaptureDoc.Rendering.Tests | **17/17 bestanden** (u. a. PDF, Rahmen/Schatten, Drag-Cache pixelgleich, Performance) |
-| CaptureDoc.Media.Tests (echtes FFmpeg 9.0.2) | **27/27 bestanden** (u. a. Folien einfügen mit/ohne Ton und zeitversetzten Elementen pixelgeprüft, Uhr→Videozeit bei echter Aufnahme mit Pause, Overlays/Zoom, Reihenfolge) |
-| CaptureDoc.App.Tests (Avalonia Headless) | **11/11 bestanden** (Schnitte per Tastatur, Zeichnen direkt im Video mit Zeitfenster, Textmarker, Spuren ziehen + Undo + Reihenfolge, Folienmodus, Side-car speichern/laden, Live-Zeichnen → Annotationen, Eigenschaften-Leiste scrollt, Video-Schritt mit Folie, GDI + Maus-Hook) + 1 Screenshot-Helfer (nur mit `CD_SHOT_DIR`) |
+| CaptureDoc.Media.Tests (echtes FFmpeg 9.0.2) | **29/29 bestanden** (u. a. Sequenz: Lücke, Bild-im-Bild, Clip-Grenzen, Ton; Annotationen/Schwärzung über der Sequenz; Folien mit/ohne Ton; Uhr→Videozeit bei echter Aufnahme mit Pause) |
+| CaptureDoc.App.Tests (Avalonia Headless) | **12/12 bestanden** (Teilen + Löschen per Tastatur mit Lücke schließen und Undo, Import anhängen/Bild-im-Bild/Spurwechsel + Export der Sequenz, Zeichnen direkt im Video, Textmarker, Annotations-Spuren + Reihenfolge, Folienmodus, Side-car, Live-Zeichnen, Eigenschaften-Leiste, Video-Schritt mit Folie, GDI + Maus-Hook) + 1 Screenshot-Helfer (nur mit `CD_SHOT_DIR`) |
 
 ## 0.3.0 – nicht geprüft
 - Oberfläche der neuen Funktionen per Bildschirmsteuerung (für diese Version nicht freigegeben) – nur headless.

@@ -53,6 +53,36 @@ public sealed class SlideSpec
     public OverlaySpec Overlay { get; init; } = new();
 }
 
+/// <summary>One clip of a multi-track sequence, ready for rendering (pixels and seconds are final).</summary>
+public sealed class SequenceSpecClip
+{
+    public required string Path { get; init; }
+    public double In { get; init; }
+    public double Duration { get; init; }
+    /// <summary>Position on the sequence timeline.</summary>
+    public double Start { get; init; }
+    public int X { get; init; }
+    public int Y { get; init; }
+    public int W { get; init; }
+    public int H { get; init; }
+    public double Opacity { get; init; } = 1;
+    public double Volume { get; init; } = 1;
+    public bool Audio { get; init; }
+}
+
+/// <summary>Multi-track edit: clips bottom → top on a coloured canvas, then annotations and zoom on the result.</summary>
+public sealed class SequenceSpec
+{
+    public int Width { get; init; }
+    public int Height { get; init; }
+    public double Fps { get; init; } = 30;
+    public string Background { get; init; } = "0x000000";
+    public double Duration { get; init; }
+    public List<SequenceSpecClip> Clips { get; } = new();
+    /// <summary>Annotations and zoom in sequence time (optional).</summary>
+    public OverlaySpec? Overlay { get; init; }
+}
+
 /// <summary>Visible part of the frame at a time (zoom/pan).</summary>
 public readonly record struct ZoomPoint(double Time, double X, double Y, double W, double H);
 
@@ -90,7 +120,7 @@ public sealed class OverlaySpec
     /// Times are source seconds; <paramref name="offset"/> is the input seek (-ss) so that t is relative.
     /// Image overlays use inputs 1..n in the order of <see cref="Images"/>.
     /// </summary>
-    public string BuildFilter(string input, int width, int height, double fps, double offset)
+    public string BuildFilter(string input, int width, int height, double fps, double offset, int firstImageInput = 1)
     {
         var sb = new StringBuilder();
         var cur = input; var n = 0;
@@ -116,7 +146,7 @@ public sealed class OverlaySpec
                 }
                 else { xs = F(im.X); ys = F(im.Y); }
                 var io = Next();
-                sb.Append($"{cur}[{op.idx + 1}:v]overlay=x='{xs}':y='{ys}':enable='{ien}':eof_action=repeat{io};");
+                sb.Append($"{cur}[{op.idx + firstImageInput}:v]overlay=x='{xs}':y='{ys}':enable='{ien}':eof_action=repeat{io};");
                 cur = io;
                 continue;
             }

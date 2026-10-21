@@ -223,6 +223,66 @@ public class OverlayIntegrationTests
         Assert.InRange(mid.r, 100, 160);
     }
 
+    private static async Task<string> ColorClipAsync(FfmpegTools t, string dir, string name, string color, double d, bool tone = false)
+    {
+        var f = Path.Combine(dir, name + ".mkv");
+        var a = new List<string> { "-hide_banner", "-y", "-f", "lavfi", "-i", $"color=c={color}:s=320x240:r=10:d={d.ToString(System.Globalization.CultureInfo.InvariantCulture)}" };
+        if (tone) a.AddRange(new[] { "-f", "lavfi", "-i", $"sine=f=440:r=44100:d={d.ToString(System.Globalization.CultureInfo.InvariantCulture)}" });
+        a.AddRange(new[] { "-c:v", "libx264", "-preset", "ultrafast", "-crf", "10", "-pix_fmt", "yuv444p" });
+        if (tone) a.AddRange(new[] { "-c:a", "aac", "-shortest" });
+        a.Add(f);
+        var r = await FfmpegRunner.RunAsync(t.Ffmpeg, a);
+        Assert.True(r.Success, r.StdErrTail);
+        return f;
+    }
+
+    [Fact]
+    public async Task Sequence_places_clips_in_time_with_gaps_and_picture_in_picture()
+    {
+        if (Tools is not { } t) return;
+        using var d = new TempDir();
+        var red = await ColorClipAsync(t, d.Path, "red", "red", 3, tone: true);
+        var blue = await ColorClipAsync(t, d.Path, "blue", "blue", 3);
+        var green = await ColorClipAsync(t, d.Path, "green", "0x00FF00", 4);
+        var spec = new SequenceSpec { Width = 320, Height = 240, Fps = 10, Background = "0x000000", Duration = 5.5 };
+        spec.Clips.Add(new SequenceSpecClip { Path = red, In = 0.5, Duration = 2, Start = 0, W = 320, H = 240, Audio = true });   // 0..2
+        spec.Clips.Add(new SequenceSpecClip { Path = blue, In = 0, Duration = 2.5, Start = 3, W = 320, H = 240 });                // gap 2..3, then 3..5.5
+        spec.Clips.Add(new SequenceSpecClip { Path = green, In = 0, Duration = 3, Start = 1, X = 10, Y = 10, W = 80, H = 60 });   // PiP 1..4
+        var outFile = d.File("seq.mkv");
+        await new VideoExporter(t).RenderSequenceAsync(spec, outFile);
+        var info = await MediaProbe.ProbeAsync(t, outFile);
+        Assert.InRange(info.Duration, 5.3, 5.8);
+        Assert.True(info.HasAudio);
+        async Task<(int r, int g, int b)> At(double time, int x, int y) => await PixelAsync(t, outFile, time, x, y);
+        var a = await At(0.5, 160, 120); Assert.True(a.r > 180 && a.b < 80, $"red at 0.5 {a}");
+        var p0 = await At(0.5, 40, 30); Assert.True(p0.r > 180, $"no PiP yet {p0}");
+        var p1 = await At(1.5, 40, 30); Assert.True(p1.g > 180 && p1.r < 80, $"PiP at 1.5 {p1}");
+        var gap = await At(2.5, 160, 120); Assert.True(gap.r < 40 && gap.g < 40 && gap.b < 40, $"gap black {gap}");
+        var pg = await At(2.5, 40, 30); Assert.True(pg.g > 180, $"PiP over gap {pg}");
+        var b = await At(3.5, 160, 120); Assert.True(b.b > 180 && b.r < 80, $"blue at 3.5 {b}");
+        var end = await At(4.6, 40, 30); Assert.True(end.b > 180 && end.g < 80, $"PiP ended {end}");
+    }
+
+    [Fact]
+    public async Task Annotations_and_redaction_apply_to_the_whole_sequence()
+    {
+        if (Tools is not { } t) return;
+        using var d = new TempDir();
+        var grey = await ColorClipAsync(t, d.Path, "grey", "0x808080", 3);
+        var png = await RedPngAsync(t, d.Path);
+        var ov = new OverlaySpec();
+        ov.Images.Add(new ImageOverlay { PngPath = png, X = 200, Y = 150, Start = 3.5, End = 5, Order = 0 });    // on the second clip
+        ov.Effects.Add(new RegionEffect { Kind = RegionEffectKind.Blackout, X = 0, Y = 0, W = 60, H = 60, Start = 0, End = 5, Order = 1 });
+        var spec = new SequenceSpec { Width = 320, Height = 240, Fps = 10, Duration = 5, Overlay = ov };
+        spec.Clips.Add(new SequenceSpecClip { Path = grey, In = 0, Duration = 2, Start = 0, W = 320, H = 240 });
+        spec.Clips.Add(new SequenceSpecClip { Path = grey, In = 1, Duration = 2, Start = 3, W = 320, H = 240 });
+        var outFile = d.File("seq-ov.mkv");
+        await new VideoExporter(t).RenderSequenceAsync(spec, outFile);
+        var black = await PixelAsync(t, outFile, 1.0, 20, 20); Assert.True(black.r < 30, $"blackout {black}");
+        var red = await PixelAsync(t, outFile, 4.0, 220, 170); Assert.True(red.r > 180 && red.g < 80, $"annotation {red}");
+        var before = await PixelAsync(t, outFile, 3.2, 220, 170); Assert.InRange(before.g, 100, 160);
+    }
+
     [Fact]
     public async Task Pixelate_and_magnify_effects_render()
     {

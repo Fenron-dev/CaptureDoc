@@ -54,7 +54,14 @@ public static class ProjectFile
     public static string AppVersion { get; set; } = typeof(ProjectFile).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
     /// <summary>Registered migrations, keyed by source version.</summary>
-    public static readonly List<IProjectMigration> Migrations = new() { new V1ToV2() };
+    public static readonly List<IProjectMigration> Migrations = new() { new V1ToV2(), new V2ToV3() };
+
+    /// <summary>v3 adds optional video sequences; old trim/cut data is converted when the video is opened.</summary>
+    private sealed class V2ToV3 : IProjectMigration
+    {
+        public int FromVersion => 2;
+        public JsonNode Migrate(JsonNode project) => project;
+    }
 
     /// <summary>v2 only adds optional properties (video references); v1 files stay valid.</summary>
     private sealed class V1ToV2 : IProjectMigration
@@ -169,7 +176,9 @@ public static class ProjectFile
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var overlays = project.Guide.Steps.Select(s => s.Video?.Overlay).OfType<VideoOverlay>().ToList();
-        var pages = project.Pages.Concat(overlays.Select(o => o.Page)).Concat(overlays.SelectMany(o => o.Slides.Select(sl => sl.Page)));
+        var slidePages = project.Guide.Steps.Select(s => s.Video?.Sequence).OfType<VideoSequence>()
+            .SelectMany(q => q.AllClips).Select(c => c.Slide?.Page).OfType<Page>();
+        var pages = project.Pages.Concat(overlays.Select(o => o.Page)).Concat(overlays.SelectMany(o => o.Slides.Select(sl => sl.Page))).Concat(slidePages);
         foreach (var p in pages)
             foreach (var l in p.AllLayers().OfType<ImageLayer>())
                 if (!string.IsNullOrEmpty(l.AssetId)) set.Add(l.AssetId);

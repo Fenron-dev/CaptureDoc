@@ -419,6 +419,69 @@ public sealed class VideoExporter
         }
     }
 
+    // ------------------------------------------------------------------ sequences
+
+    /// <summary>A slide as a short video (coloured frame + its timed elements, no audio).</summary>
+    public async Task RenderSlideAsync(SlideSpec s, int width, int height, double fps, string output, CancellationToken ct = default)
+    {
+        var a = new List<string> { "-hide_banner", "-y", "-f", "lavfi", "-i", $"color=c={s.Color}:s={width}x{height}:r={F(fps)}:d={F(s.Duration)}" };
+        a.AddRange(s.Overlay.InputArgs());
+        a.AddRange(new[] { "-filter_complex", s.Overlay.BuildFilter("[0:v]", width, height, fps, 0) + ";[ov]format=yuv444p[vout]", "-map", "[vout]" });
+        a.AddRange(new[] { "-t", F(s.Duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv444p", output });
+        var r = await RunAsync(_t.Ffmpeg, a, ct);
+        if (!r.Success) throw new InvalidOperationException("Folie konnte nicht erzeugt werden: " + r.StdErrTail);
+    }
+
+    /// <summary>
+    /// Renders a multi-track sequence into one working file (H.264 4:4:4, MKV): every clip is trimmed, scaled to its
+    /// rectangle and laid over the canvas at its time (gaps show the background), audio of all clips is mixed,
+    /// then annotations and zoom are applied to the result.
+    /// </summary>
+    public async Task<string> RenderSequenceAsync(SequenceSpec spec, string output, IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        var w = spec.Width & ~1; var h = spec.Height & ~1;
+        var dur = Math.Max(0.1, spec.Duration);
+        var fps = spec.Fps > 0 ? spec.Fps : 30;
+        var args = new List<string> { "-hide_banner", "-y" };
+        foreach (var c in spec.Clips) args.AddRange(new[] { "-ss", F(Math.Max(0, c.In)), "-t", F(Math.Max(0.05, c.Duration)), "-i", c.Path });
+        if (spec.Overlay is { IsEmpty: false } ov) args.AddRange(ov.InputArgs());
+
+        var fc = new System.Text.StringBuilder();
+        fc.Append($"color=c={spec.Background}:s={w}x{h}:r={F(fps)}:d={F(dur)},format=yuv444p[b0];");
+        var cur = "[b0]";
+        for (var i = 0; i < spec.Clips.Count; i++)
+        {
+            var c = spec.Clips[i];
+            var cw = Math.Max(2, c.W & ~1); var ch = Math.Max(2, c.H & ~1);
+            var alpha = c.Opacity < 0.999 ? $",colorchannelmixer=aa={F(Math.Clamp(c.Opacity, 0, 1))}" : "";
+            fc.Append($"[{i}:v]fps={F(fps)},scale={cw}:{ch}:flags=lanczos,setsar=1,format=yuva444p{alpha},setpts=PTS-STARTPTS+{F(c.Start)}/TB[c{i}];");
+            var next = $"[b{i + 1}]";
+            fc.Append($"{cur}[c{i}]overlay=x={c.X}:y={c.Y}:eof_action=pass:enable='between(t,{F(c.Start)},{F(c.Start + c.Duration)})'{next};");
+            cur = next;
+        }
+        if (spec.Overlay is { IsEmpty: false } o) fc.Append(o.BuildFilter(cur, w, h, fps, 0, spec.Clips.Count) + ";[ov]");
+        else fc.Append(cur);
+        fc.Append("format=yuv444p[vout]");
+
+        var audio = spec.Clips.Select((c, i) => (c, i)).Where(x => x.c.Audio && x.c.Volume > 0.001).ToList();
+        if (audio.Count > 0)
+        {
+            fc.Append(';');
+            foreach (var (c, i) in audio)
+            {
+                var ms = (long)Math.Round(c.Start * 1000);
+                fc.Append($"[{i}:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume={F(c.Volume)},adelay={ms}:all=1[a{i}];");
+            }
+            fc.Append(string.Concat(audio.Select(x => $"[a{x.i}]")) + (audio.Count > 1 ? $"amix=inputs={audio.Count}:normalize=0:duration=longest," : "") + "apad[aout]");
+        }
+        args.AddRange(new[] { "-filter_complex", fc.ToString(), "-map", "[vout]" });
+        if (audio.Count > 0) args.AddRange(new[] { "-map", "[aout]", "-c:a", "aac", "-b:a", "160k" });
+        args.AddRange(new[] { "-t", F(dur), "-r", F(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv444p", output });
+        var r = await RunAsync(_t.Ffmpeg, args, ct, t => progress?.Report($"Setze Video zusammen … {Math.Min(100, t / dur * 100):0} %"));
+        if (!r.Success) throw new InvalidOperationException("Video konnte nicht zusammengesetzt werden: " + r.StdErrTail);
+        return output;
+    }
+
     // ------------------------------------------------------------------ frames
 
     public async Task<byte[]> ExtractFrameAsync(string src, double seconds, CancellationToken ct = default)

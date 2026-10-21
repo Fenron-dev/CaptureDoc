@@ -12,6 +12,13 @@ Technik: [[ADR-006 Video mit FFmpeg]]. Code: `src/CaptureDoc.Media/` (`ScreenRec
 - **Mausklicks** (Windows: Low-Level-Hook nur während der Aufnahme) → Ring-Annotationen; Doppelklicks (< 0,5 s, ≤ 12 px) werden zusammengefasst. Klicks im Zeichenmodus werden ignoriert.
 - **Live-Zeichnen** (`LiveDrawLayer`): transparentes Fenster exakt über dem Bereich, `WDA_EXCLUDEFROMCAPTURE` → nicht im Rohvideo. Zeiger-Modus = durchklickbar (`WS_EX_TRANSPARENT`), Zeichenmodus = fängt die Maus (Hintergrund mit Alpha 1, sonst gehen Klicks auf leere Pixel durch). Benutzt dieselbe `EditorCanvas` wie der Editor. Jede Zeichnung bekommt Start = Aufnahme-Uhr und Ende = Start + Einstellung (0 = bis „Alles ausblenden“). Werkzeuge und Deckkraft der Leiste in den Einstellungen.
 
+## Mehrspur-Schnitt (0.5.0)
+- Modell `VideoSequence` (Core/Model/Sequence.cs): Breite/Höhe/FPS/Hintergrund, Spuren (0 = Hauptspur unten), Clips mit Quelle, `SourceIn/Out`, `Start`, Platzierung (`Rect`, null = einpassen), Deckkraft, Lautstärke, Ton; Folien sind Clips (`ClipKind.Slide`).
+- `SequenceOps`: `Split`, `SplitAll`, `RippleDelete` (Clips schneiden/entfernen/nachrücken; Annotationen im Bereich entfernen, übergreifende kürzen, spätere verschieben; Zoom ebenso), `RippleInsert` (Platz schaffen, übergreifende Annotationen in zwei Teile), `TrimStart/End` (Quellgrenzen), `LinkedAnnotations` (wandern beim Verschieben mit), `FromLegacy` (0.2–0.4 → Sequenz).
+- Undo: ein Verlauf für Annotationen + Zoom + Sequenz (`ProjectSession.ReplaceHistory` mit eigenem Snapshot).
+- Vorschau: je Quelle niedrig aufgelöste JPEG-Frames; das Bild aller Spuren wird je Zeitpunkt zusammengesetzt (`Compose`), beim Anhalten mit exakten Frames.
+- Export: `VideoRenderPlan.PrepareSequenceAsync` → `VideoExporter.RenderSequenceAsync`: Farbfläche, je Clip `-ss/-t`-Eingang → `scale` → `setpts +Start` → `overlay … eof_action=pass:enable=between(t,…)`; Ton `adelay` + `amix`; dann Annotationen/Zoom (`OverlaySpec`, Eingangsnummern ab Clip-Anzahl). Ein einzelner unveränderter Clip ohne Annotationen geht direkt (Stream Copy bleibt möglich).
+
 ## Video-Studio (0.4.0, Layout wie gängige Screen-Recorder)
 - **Zeichnen direkt im Video**: `EditorCanvas` mit `Underlay` = aktuelles Videobild (Vorschau-JPEG beim Abspielen, Vollbild beim Anhalten) und `LayerFilter` = Ebenen, die zur Abspielposition sichtbar sind (auch für Treffer). Effekte (Schwärzen, Verpixeln, Lupe) arbeiten damit in der Vorschau auf echten Pixeln. Neue Ebenen erhalten über `LayerCreated` (noch im selben Undo-Schritt) ihr Zeitfenster.
 - Bewegte Annotationen werden über `DisplayOverride` an der interpolierten Stelle gezeigt; die ausgewählte bleibt an ihrer bearbeitbaren Position.
@@ -31,6 +38,7 @@ Technik: [[ADR-006 Video mit FFmpeg]]. Code: `src/CaptureDoc.Media/` (`ScreenRec
 
 ## Grenzen
 - Videos werden im Projekt **referenziert**, nicht eingebettet.
-- Beim normalen Abspielen im Editor werden Folien nicht eingeblendet (Markierung auf der Video-Spur); Vorschau im Folienmodus bzw. im Export.
+- Vorschau ohne Ton, etwa 10 Bilder/s (Export vollständig).
+- Keine Überblendungen zwischen Clips (harte Schnitte).
 - Live-Zeichnen nur unter Windows (der Fenster-Ausschluss aus der Aufnahme ist Windows-spezifisch; sonst wären Zeichnungen doppelt im Video). Getestet headless (Zeichnen, Undo, Zeitumrechnung), nicht bei einer echten Aufnahme am Bildschirm.
 - Linux/Wayland-Aufnahme fehlt ([[ADR-007 macOS und Linux]]).

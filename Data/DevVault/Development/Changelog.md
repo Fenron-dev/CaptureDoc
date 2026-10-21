@@ -3,6 +3,16 @@ tags: [changelog]
 ---
 # Changelog
 
+## 0.5.0 – 2026-10-21
+- **Mehrspur-Schnitt, nichts wird eingebrannt**: Das Video ist eine Sequenz aus Clips auf Spuren. **✂ Teilen (S)** schneidet an der Abspielposition in zwei Clips; jeder Teil lässt sich einzeln **entfernen** (auf der Hauptspur rückt alles nach – auch Annotationen und Zoom), **verschieben**, an den Rändern **kürzen** oder **auf eine andere Spur ziehen**. Strg+Z macht alles rückgängig. Die Originaldateien bleiben unverändert.
+- **Weitere Videos importieren**: an der Abspielposition einfügen (Rest rückt nach), ans Ende anhängen oder als **Bild-im-Bild** auf eigener Spur darüberlegen; Position/Größe direkt im Video ziehen oder per Vorlage (Ecken, Mitte, Vollbild), Deckkraft, Lautstärke, Ton aus. Spuren ausblenden/stumm schalten.
+- **Folien sind Clips** auf der Hauptspur (Einfügen schiebt den Rest nach hinten, Dauer ändern ebenso).
+- Annotationen, die ganz in einem Clip liegen, wandern beim Verschieben mit (abschaltbar).
+- Bereich auf dem Lineal + X entfernt den Bereich aus allen Spuren; ⇤ Anfang / Ende ⇥ kürzen.
+- Export setzt alle Spuren zusammen (Lücken = Hintergrund, Ton aller Clips gemischt); ein einzelner unveränderter Clip wird weiter direkt exportiert (verlustfreies Schneiden bleibt möglich).
+- Projektformat **v3** (Sequenz im Video-Schritt). Projekte aus 0.2–0.4 werden beim Öffnen umgestellt: Trim, Schnitte und Folien werden zu Clips, Annotationen und Zoom auf die neue Zeit umgerechnet.
+- „✂ Schnitte anwenden“ (Einbrennen) entfällt.
+
 ## 0.4.0 – 2026-10-21
 - **Video-Studio neu**: Werkzeuge links, Zeichnen **direkt im Video** (Vorschau nur der zur Abspielposition sichtbaren Annotationen, Schwärzen/Verpixeln/Lupe auf echten Pixeln), rechts Zeit & Reihenfolge + Eigenschaften, Ebenen, Zoom & Folien; der separate Annotations-Editor entfällt.
 - **Spuren-Timeline**: Spurnamen, Lineal (Bereich ziehen + X = schneiden), Video, Zoom-Keyframes, Folien und eine Spur je Annotation; Einrasten am Abspielkopf, Zeitachsen-Zoom (Strg+Rad), Undo für Zeitänderungen.

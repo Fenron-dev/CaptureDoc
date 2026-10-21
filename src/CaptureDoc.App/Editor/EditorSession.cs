@@ -101,6 +101,18 @@ public sealed class ProjectSession : IDisposable
         return h;
     }
 
+    /// <summary>Replaces the undo history of a page with one that also captures other state (video editor: sequence + zoom).</summary>
+    public History ReplaceHistory(Page page, Func<string> capture, Action<string> restore)
+    {
+        var h = new History(capture, restore);
+        h.Changed += (_, _) => MarkDirty();
+        _histories[page.Id] = h;
+        return h;
+    }
+
+    /// <summary>Forgets the history of a page (its object was replaced).</summary>
+    public void ResetHistory(Page page) => _histories.Remove(page.Id);
+
     public void MarkDirty()
     {
         IsDirty = true;
@@ -177,6 +189,8 @@ public sealed class ProjectSession : IDisposable
         {
             var resolved = ProjectFile.ResolveMedia(FilePath, v.Path, FromPortable);
             if (resolved is not null) v.Path = ProjectFile.ToProjectRelative(newPath, resolved, ToPortable);
+            foreach (var c in v.Sequence?.AllClips.Where(c => c.Kind == ClipKind.Video) ?? Enumerable.Empty<SequenceClip>())
+                if (ProjectFile.ResolveMedia(FilePath, c.Path, FromPortable) is { } r) c.Path = ProjectFile.ToProjectRelative(newPath, r, ToPortable);
         }
     }
 

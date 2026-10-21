@@ -20,10 +20,18 @@ Aufnahmen liegen in `Data/Media/Aufnahmen`. Annotationen, Schnitte und Folien ei
 - **Rechts**: *Eigenschaften* (oben Zeitfenster von/bis mit ⇤/⇥ = Abspielposition, Bewegung, ▲/▼ Reihenfolge; darunter Farbe, Stärke, Text …), *Ebenen* (Liste mit Sichtbarkeit, Sperren, Deckkraft, Drag & Drop), *Zoom & Folien*.
 - **Unten Spuren**: Zeitlineal · 🎬 Video (Vorschaubilder, rote Schnitte, grüne Start-/Endmarken) · 🔍 Zoom-Keyframes · ▣ Folien · eine Spur je Annotation (oben = vorne). Balken ziehen = verschieben, Ränder ziehen = Beginn/Ende (rastet am Abspielkopf ein), Spur anklicken = Annotation auswählen und hinspringen. `Strg`+Mausrad zoomt die Zeitachse, `Umschalt`+Mausrad scrollt.
 
-## Schneiden
-- **Auf dem Zeitlineal einen Bereich ziehen** und **X** drücken (oder „✂ Schnitt“) = Abschnitt entfernen. Alternativ zweimal X an Beginn und Ende.
-- Entfernte Abschnitte stehen als Liste unter der Leiste – **✕** nimmt sie zurück, **Entf** entfernt die Markierung unter dem Abspielkopf. **[ Start hier** (I) / **Ende hier ]** (O) kürzen Anfang/Ende.
-- Schnitte wirken beim Export immer. **✂ Schnitte anwenden** schreibt zusätzlich eine neue, kürzere Datei (Annotationen und Folien werden dabei eingebrannt – nur nötig, wenn du die gekürzte Datei separat brauchst).
+## Schneiden (nichtdestruktiv)
+Das Video besteht aus **Clips auf Spuren** – die Originaldatei wird nie verändert, nichts wird eingebrannt, alles bleibt bearbeitbar (Strg+Z).
+- **✂ Teilen (S)**: schneidet den ausgewählten Clip (sonst alle Clips) an der Abspielposition in zwei Teile.
+- **Clip anklicken + Entf**: entfernt ihn. Auf der Hauptspur (Video 1) schließt sich die Lücke – alles danach rückt nach, auch Annotationen und Zoom („Lücken schließen“ abschaltbar).
+- **Clip ziehen**: verschieben (rastet an Kanten und am Abspielkopf ein), auch nach oben auf eine andere Spur; **Ränder ziehen** = Anfang/Ende kürzen oder wieder verlängern. Annotationen, die ganz im Clip liegen, wandern mit („Annotationen mitnehmen“).
+- **Bereich auf dem Zeitlineal ziehen + X**: entfernt diesen Bereich aus allen Spuren. **⇤ Anfang** (I) / **Ende ⇥** (O): alles vor/ab der Abspielposition entfernen.
+
+## Mehrere Videos und Spuren
+- **🎞 Video importieren**: *einfügen* an der Abspielposition (Rest rückt nach), *ans Ende anhängen* oder *darüberlegen* als Bild-im-Bild auf eigener Spur.
+- Ein Clip auf einer höheren Spur liegt über dem darunter. Position und Größe: im Video am goldenen Rahmen ziehen (Ecke unten rechts = Größe) oder Vorlagen ↖ ↗ ↙ ↘ ◻ Vollbild im Tab *Eigenschaften*; dort auch Deckkraft, Lautstärke, Ton aus, ▲/▼ Spur.
+- Spurkopf: 👁 ein-/ausblenden, 🔊 stumm. **＋ Spur** legt eine neue Spur an. Andere Seitenverhältnisse werden eingepasst (Ränder = Hintergrund).
+- Hinweis: Die Vorschau im Editor läuft ohne Ton und mit etwa 10 Bildern/s; der Export ist vollständig.
 
 ## Ebenen und Reihenfolge
 Eine Schwärzung verdeckt nur Ebenen **unter** ihr – liegt eine Nummer darüber, bleibt sie sichtbar. Reihenfolge mit ▲/▼, `Strg+]` / `Strg+[` oder per Drag & Drop im Tab *Ebenen*. Zoom wirkt auf alles zusammen, Schwärzungen bleiben auf ihrem Inhalt.
