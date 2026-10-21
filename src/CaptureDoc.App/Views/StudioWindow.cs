@@ -110,6 +110,8 @@ public sealed class StudioWindow : Window
         top.Children.Add(Ui.Button("📷×N Serie", async () => await CaptureSeriesAsync(), "Gleichen Bereich mehrmals im Abstand aufnehmen – jedes Bild wird ein Schritt"));
         top.Children.Add(Ui.Button("🖼 Bild hinzufügen…", async () => await AddImageFileAsync(), "PNG/JPEG oder .capturedoc als Schritt hinzufügen"));
         top.Children.Add(Ui.Button("🎬 Video hinzufügen…", async () => await AddVideoFileAsync(), "Ganzes Video (MP4/MKV/WebM/MOV) als Schritt – wird beim Export eingebettet"));
+        top.Children.Add(Ui.Button("● Video aufnehmen", async () => await RecordVideoStepAsync(), "Neues Video aufnehmen – wird ein Video-Schritt und öffnet sich im Video-Editor"));
+        top.Children.Add(Ui.Button("📁 Dateien", ShowProjectFiles, "Übersicht aller Videos/Dateien dieses Projekts – fehlende neu verknüpfen, alles in den Projektordner sammeln"));
         top.Children.Add(new Separator { Width = 16 });
         top.Children.Add(Ui.Button("⇪ Obsidian-Export…", async () => await ExportObsidianAsync(), "Vorschau, Konfliktprüfung und Export in den gewählten Vault", accent: true));
         top.Children.Add(Ui.Button("Markdown…", async () => await ExportMarkdownFolderAsync(), "Als Markdown in beliebigen Ordner"));
@@ -123,6 +125,7 @@ public sealed class StudioWindow : Window
             {
                 Ui.Button("▲", () => MoveStep(-1), "Nach oben"), Ui.Button("▼", () => MoveStep(1), "Nach unten"),
                 Ui.Button("✎ Bild bearbeiten", OpenStepEditor, "Bild mit allen Ebenen im Editor bearbeiten"),
+                Ui.Button("📋 Kopieren", CopyStepImage, "Bild des Schritts mit allen Annotationen in die Zwischenablage (z. B. zum Einfügen in einen Chat)"),
                 Ui.Button("🗑", RemoveStep, "Schritt entfernen"),
                 Ui.Button("+ Textschritt", () => AddStep(null, "Neuer Schritt"), "Schritt ohne Bild"),
             },
@@ -342,7 +345,7 @@ public sealed class StudioWindow : Window
     }
 
     /// <summary>Adds a video step: poster frame becomes the (annotatable) page, the clip is referenced.</summary>
-    public void AddVideoStep(string file, VideoRef video, SkiaSharp.SKImage poster, byte[] posterPng, string title, ProjectSession? overlaySource = null, VideoOverlay? overlay = null, VideoSequence? sequence = null)
+    public GuideStep AddVideoStep(string file, VideoRef video, SkiaSharp.SKImage poster, byte[] posterPng, string title, ProjectSession? overlaySource = null, VideoOverlay? overlay = null, VideoSequence? sequence = null)
     {
         var page = _session.AddPage(poster, posterPng, title);
         video.Path = Video.VideoStepRenderer.Store(_app, _session, file);
@@ -361,6 +364,9 @@ public sealed class StudioWindow : Window
                         if (overlaySource.Project.Assets.TryGetValue(im.AssetId, out var info)) _session.Project.Assets[im.AssetId] = info;
                     }
             }
+            foreach (var m in seq.Media)
+                if (overlaySource is not null && ProjectFile.ResolveMedia(overlaySource.FilePath, m.Path, _app.Env.FromPortablePath) is { } fm)
+                    m.Path = Video.VideoStepRenderer.Store(_app, _session, fm);
             video.Sequence = seq;
             video.Start = 0; video.End = seq.Duration; video.Cuts.Clear();
         }
@@ -381,6 +387,59 @@ public sealed class StudioWindow : Window
         RefreshSteps(_session.Project.Guide.Steps.Count - 1);
         UpdateTitle();
         Activate();
+        return step;
+    }
+
+    /// <summary>Records a video and adds it as a step (with click markers / live drawings), then opens the video editor for it.</summary>
+    private async Task RecordVideoStepAsync()
+    {
+        if (_app.Ffmpeg is not { } tools) { await Video.RecordingController.ShowMissingFfmpegAsync(this); return; }
+        var r = await App.Current.Recording.RecordAsync(this);
+        if (r is null) return;
+        try
+        {
+            var info = await Media.MediaProbe.ProbeAsync(tools, r.File);
+            var png = await new Media.VideoExporter(tools).ExtractFrameAsync(r.File, Math.Min(0.1, info.Duration / 2));
+            var img = SkiaSharp.SKImage.FromEncodedData(png) ?? throw new InvalidDataException("Vorschaubild konnte nicht gelesen werden.");
+            var title = Path.GetFileNameWithoutExtension(r.File);
+            var overlay = new VideoOverlay { Page = new Page { Width = info.Width, Height = info.Height, Background = ColorRgba.Transparent } };
+            overlay.Page.Layers.AddRange(Video.ClickMarkers.Create(r.Clicks, info.Width, info.Duration));
+            overlay.Page.Layers.AddRange(r.LiveLayers);
+            var seq = SequenceOps.ForVideo(Video.VideoStepRenderer.Store(_app, _session, r.File), info.Duration, info.Width, info.Height, info.Fps, info.HasAudio, title);
+            seq.Media[0].Recorded = true;
+            var step = AddVideoStep(r.File, new VideoRef { Start = 0, End = info.Duration, IncludeAudio = info.HasAudio, MaxWidth = Math.Min(1280, info.Width) }, img, png, title, _session, overlay, seq);
+            if (step.Video is { } v && v.Overlay is null) v.Overlay = overlay;
+            SelectStep(step);
+            OpenStepVideo(step);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException)
+        {
+            await Dialogs.InfoAsync(this, "Video aufnehmen", ex.Message);
+        }
+    }
+
+    private void SelectStep(GuideStep step)
+    {
+        var i = _session.Project.Guide.Steps.IndexOf(step);
+        if (i >= 0) RefreshSteps(i);
+    }
+
+    private void ShowProjectFiles()
+    {
+        var w = new ProjectMediaWindow(_app, _session);
+        w.Changed += (_, _) => { RefreshSteps(); BuildStepEditor(); UpdateTitle(); };
+        _ = w.ShowDialog(this);
+    }
+
+    private void CopyStepImage()
+    {
+        var s = SelectedStep;
+        var page = s?.PageId is { } pid ? _session.Project.FindPage(pid) : null;
+        if (page is null) { _info.Text = "Dieser Schritt hat kein Bild."; return; }
+        if (_app.Clipboard is null) { _ = Dialogs.InfoAsync(this, "Zwischenablage", "Auf diesem System noch nicht unterstützt."); return; }
+        using var img = _session.Renderer.RenderPage(page);
+        var ok = _app.Clipboard.SetImage(SkiaConvert.ToRaw(img), SkiaConvert.EncodePng(img, 3));
+        _info.Text = ok ? $"Bild von „{s!.Title}“ mit Annotationen kopiert ({img.Width} × {img.Height} px) – mit Strg+V einfügen." : "⚠ Zwischenablage ist von einem anderen Programm blockiert.";
     }
 
     private async Task AddVideoFileAsync()

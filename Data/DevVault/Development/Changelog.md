@@ -3,6 +3,14 @@ tags: [changelog]
 ---
 # Changelog
 
+## 0.6.0 – 2026-10-21
+- **Aufnehmen direkt im Video-Editor** („● Aufnehmen…“, auch in der Werkzeugleiste und im Tab *Medien*): einfügen an der Abspielposition, anhängen, als Bild-im-Bild darüberlegen oder nur in die Medienliste. Klick-Markierungen und Live-Zeichnungen landen zeitlich und räumlich am neuen Clip.
+- **Tab „Medien“**: alle Videos des Schnitts (auch nicht platzierte) mit Vorschaubild, Länge, Auflösung, Größe und Verwendung; einfügen/anhängen/darüberlegen, im Ordner zeigen, neu verknüpfen, aus der Liste entfernen.
+- **Documentation Studio**: „● Video aufnehmen“ (neuer Video-Schritt, öffnet sich im Video-Editor) und **„📁 Dateien“** – Übersicht aller Videos des Projekts mit Fundort, Größe und Verwendung, fehlende neu verknüpfen.
+- **„📦 In Projektordner sammeln“**: kopiert alle Videos außerhalb des Projektordners nach `<Projekt>-Medien` und stellt das Projekt auf die Kopien um – der Ordner kann dann komplett weitergegeben werden.
+- **Bild mit Annotationen kopieren**: im Video-Editor („📋 Bild kopieren“, Strg+C) und im Studio für das Schritt-Bild („📋 Kopieren“) – zum Einfügen z. B. in einen Chat. (Im Bildeditor gab es das schon: Strg+C.)
+- Behoben: dieselbe Datei konnte doppelt in der Medienliste stehen (relativer und absoluter Pfad).
+
 ## 0.5.0 – 2026-10-21
 - **Mehrspur-Schnitt, nichts wird eingebrannt**: Das Video ist eine Sequenz aus Clips auf Spuren. **✂ Teilen (S)** schneidet an der Abspielposition in zwei Clips; jeder Teil lässt sich einzeln **entfernen** (auf der Hauptspur rückt alles nach – auch Annotationen und Zoom), **verschieben**, an den Rändern **kürzen** oder **auf eine andere Spur ziehen**. Strg+Z macht alles rückgängig. Die Originaldateien bleiben unverändert.
 - **Weitere Videos importieren**: an der Abspielposition einfügen (Rest rückt nach), ans Ende anhängen oder als **Bild-im-Bild** auf eigener Spur darüberlegen; Position/Größe direkt im Video ziehen oder per Vorlage (Ecken, Mitte, Vollbild), Deckkraft, Lautstärke, Ton aus. Spuren ausblenden/stumm schalten.

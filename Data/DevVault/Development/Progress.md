@@ -3,6 +3,10 @@ tags: [fortschritt]
 ---
 # Fortschritt
 
+## 2026-10-21 – 0.6.0: Aufnehmen im Editor, Projektdateien, Kopieren
+Aufnahme-Ablauf wiederverwendbar (`RecordingController.RecordAsync` → `RecordingResult`), Medienliste im Modell (`VideoSequence.Media`), Projektdatei-Übersicht (`ProjectMedia`, `ProjectMediaService`, `ProjectMediaWindow`), Sammeln in den Projektordner, Kopieren mit Annotationen in Video-Editor und Studio.
+**Getestet**: 163 automatisierte Tests. Die echte Aufnahme aus dem Editor heraus und die Zwischenablage wurden nicht automatisch geprüft (Test würde deine Zwischenablage überschreiben bzw. den Bildschirm aufnehmen); die Platzierung einer Aufnahme samt Klicks/Zeichnungen ist mit einem simulierten Aufnahme-Ergebnis getestet.
+
 ## 2026-10-21 – 0.5.0: Mehrspur-Schnitt
 Nutzerwunsch: schneiden ohne Einbrennen, Teile löschen/auf andere Ebenen verschieben, weitere Videos importieren und überlagern. Umgesetzt als nichtdestruktive Sequenz (`VideoSequence` → Spuren → Clips) mit Ripple-Operationen, die Annotationen und Zoom mitführen; Export über einen FFmpeg-Filtergraphen; ein gemeinsamer Undo-Verlauf für Schnitt und Annotationen.
 **Getestet**: 160 automatisierte Tests ([[Test-Results]]), u. a. Sequenz-Rendering pixelgeprüft (Lücken, Bild-im-Bild, Clip-Grenzen, Annotationen/Schwärzung über der Sequenz, Ton), Schnittlogik als Unit-Tests, Teilen/Löschen/Undo/Import/Spurwechsel headless. **Nicht geprüft**: Bedienung am echten Bildschirm.

@@ -125,4 +125,25 @@ public class SequenceTests
         Assert.Equal((720.0, 960.0), (r.Height, r.Width));        // 4:3 in 16:9 → pillarbox
         Assert.Equal(160, r.X, 6);
     }
+
+    [Fact]
+    public void Project_media_lists_every_file_and_relinks_all_references()
+    {
+        var p = new CaptureProject();
+        var seq = SequenceOps.ForVideo("a.mkv", 10, 1280, 720, 30, true, "A");
+        seq.Tracks[0].Clips.Add(new SequenceClip { Name = "B-Teil", Path = "b.mkv", SourceOut = 3, Start = 10 });
+        seq.Media.Add(new MediaItem { Path = "unused.mkv", Name = "unused" });
+        p.Guide.Steps.Add(new GuideStep { Title = "Video", Video = new VideoRef { Path = "a.mkv", Sequence = seq } });
+        p.Guide.Steps.Add(new GuideStep { Title = "Alt", Video = new VideoRef { Path = "old.mp4" } });
+        seq.SyncMedia();
+        Assert.Contains(seq.Media, m => m.Path == "b.mkv");                     // clip source added to the media list
+        var refs = ProjectMedia.Collect(p);
+        Assert.Equal(new[] { "a.mkv", "b.mkv", "old.mp4", "unused.mkv" }, refs.Select(r => r.Stored));
+        Assert.Empty(refs.Single(r => r.Stored == "unused.mkv").UsedBy);
+        Assert.Contains("Schritt „Alt“", refs.Single(r => r.Stored == "old.mp4").UsedBy);
+        Assert.Equal(3, ProjectMedia.Relink(p, "a.mkv", "Medien/a.mkv"));          // main video, clip, media item
+        Assert.Equal("Medien/a.mkv", p.Guide.Steps[0].Video!.Path);
+        Assert.Equal("Medien/a.mkv", seq.Tracks[0].Clips[0].Path);
+        Assert.Equal(1, seq.UseCount(seq.Media.Single(m => m.Path == "Medien/a.mkv")));
+    }
 }

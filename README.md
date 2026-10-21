@@ -1,13 +1,13 @@
 # CaptureDoc
 
-Portables Screenshot- und Dokumentations-Studio (interne Nutzung). Version 0.5.0 – Windows getestet, macOS/Linux enthalten (ungetestet).
+Portables Screenshot- und Dokumentations-Studio (interne Nutzung). Version 0.6.0 – Windows getestet, macOS/Linux enthalten (ungetestet).
 
 - **Quick Capture:** Bereich / Fenster / Monitor / alle Bildschirme / letzter Bereich, Verzögerung, Cursor, Serienaufnahme, globale Tastenkürzel, Tray, Startbefehle.
 - **Editor mit Ebenen:** Jede Annotation ist eine eigene, nachträglich bearbeitbare Ebene (Pfeil, Linie, Rechteck, Ellipse, Text, Infobox, Sprechblase, nummerierte Schritte, Hervorhebung, Spotlight, Lupe, Freihand, Schwärzen/Verpixeln/Weichzeichnen, eingefügte Bilder). Ebenenpanel mit Sichtbarkeit, Sperren, Drag & Drop, Gruppen, Deckkraft; Undo/Redo; nichtdestruktiver Zuschnitt; Stilvorlagen, Pipette, Rahmen & Schatten, Bild anheften.
 - **Projekte `.capturedoc`:** ZIP + JSON, versioniert (v2, ältere Projekte werden migriert), Prüfsummen, atomares Speichern, Konflikterkennung, Auto-Save mit Absturz-Wiederherstellung.
 - **Export:** PNG/JPEG/WebP mit max. Breite/Höhe und **geprüftem** Dateigrößenlimit (weich/hart), Exportprofile, Zwischenablage.
 - **Video & GIF:** Bildschirmaufnahme mit Rahmen, Timer, Pause, Klick-Markierung und **Live-Zeichnen** (Windows); Video-Studio mit **Mehrspur-Schnitt ohne Einbrennen** (Teilen, Teile löschen/verschieben/auf andere Spuren, weitere Videos importieren und als Bild-im-Bild überlagern), Annotationen **direkt im Video** mit eigenen Spuren, Stift/Textmarker, Zoom/Schwenk, **Folien** für Titel und Zusammenfassungen; Export als MP4 oder GIF mit **geprüftem** Größenlimit. Benötigt FFmpeg (siehe unten).
-- **Documentation Studio:** Schritt-für-Schritt-Anleitungen aus Bildern **und Videos**, 9 Vorlagen, Export nach **Obsidian** (Vorschau, Konfliktschutz, Linkprüfung, Videos eingebettet), Markdown, HTML (Bild-Popup, Video-Player) und **PDF**.
+- **Documentation Studio:** Schritt-für-Schritt-Anleitungen aus Bildern **und Videos** (auch direkt aufnehmen), Übersicht der Projektdateien mit „In Projektordner sammeln“, 9 Vorlagen, Export nach **Obsidian** (Vorschau, Konfliktschutz, Linkprüfung, Videos eingebettet), Markdown, HTML (Bild-Popup, Video-Player) und **PDF**.
 - Offline, keine Telemetrie, keine Uploads, keine Installation, keine Adminrechte.
 
 Noch nicht enthalten bzw. ungetestet: macOS/Linux auf echter Hardware, Video unter Wayland, Systemton (Windows: Gerät „Stereomix“ verwenden). Details: `Data/DevVault/Development/Roadmap.md`, `Open-Issues.md`.

@@ -191,6 +191,8 @@ public sealed class ProjectSession : IDisposable
             if (resolved is not null) v.Path = ProjectFile.ToProjectRelative(newPath, resolved, ToPortable);
             foreach (var c in v.Sequence?.AllClips.Where(c => c.Kind == ClipKind.Video) ?? Enumerable.Empty<SequenceClip>())
                 if (ProjectFile.ResolveMedia(FilePath, c.Path, FromPortable) is { } r) c.Path = ProjectFile.ToProjectRelative(newPath, r, ToPortable);
+            foreach (var m in v.Sequence?.Media ?? new List<MediaItem>())
+                if (ProjectFile.ResolveMedia(FilePath, m.Path, FromPortable) is { } r) m.Path = ProjectFile.ToProjectRelative(newPath, r, ToPortable);
         }
     }
 

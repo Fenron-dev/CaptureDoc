@@ -81,6 +81,8 @@ public sealed class VideoEditorWindow : Window
     private readonly LayersPanel _layers;
     private readonly StackPanel _timeBox = new() { Spacing = 6, Margin = new Thickness(4) };
     private readonly StackPanel _videoBox = new() { Spacing = 8, Margin = new Thickness(6) };
+    private readonly StackPanel _mediaBox = new() { Spacing = 6, Margin = new Thickness(6) };
+    private TabControl? _tabs;
     private readonly Border _slideBanner = new() { IsVisible = false, Padding = new Thickness(8, 4), Background = new SolidColorBrush(Color.FromArgb(70, 140, 70, 220)) };
     private readonly Dictionary<Tool, ToggleButton> _toolButtons = new();
     private readonly ToggleButton _zoomTool;
@@ -144,7 +146,7 @@ public sealed class VideoEditorWindow : Window
         _canvas.TextEditRequested += (_, t) => _text.Begin(t);
         _canvas.SelectionChanged += (_, _) => { if (_canvas.Selection.Count > 0) _selectedClip = null; BuildTimeBox(); RefreshTimeline(); UpdateStageOverlay(); };
         _canvas.DocumentChanged += (_, _) => { MarkChanged(); Refresh(); };
-        _canvas.HistoryChanged += (_, _) => { if (_selectedClip is { } id && _seq.Find(id) is null) _selectedClip = null; BuildTimeBox(); BuildVideoBox(); RecomposeSoon(); };
+        _canvas.HistoryChanged += (_, _) => { if (_selectedClip is { } id && _seq.Find(id) is null) _selectedClip = null; BuildTimeBox(); BuildVideoBox(); BuildMediaBox(); RecomposeSoon(); };
         _stageOverlay.ZoomPicked += (_, r) => OnZoomPicked(r);
         _stageOverlay.ClipRectStarted += (_, _) => _canvas.History.BeginTransaction("Bild-im-Bild");
         _stageOverlay.ClipRectChanging += (_, r) => OnClipRectChanging(r);
@@ -166,6 +168,9 @@ public sealed class VideoEditorWindow : Window
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 2 };
         var importTop = Ui.Button("🎞 Video importieren…", () => { }, "Weiteres Video einfügen, anhängen oder darüberlegen");
         importTop.Click += (_, _) => ShowImportMenu(importTop);
+        var recordTop = Ui.Button("● Aufnehmen…", () => { }, "Neues Video aufnehmen und direkt in die Timeline legen", accent: true);
+        recordTop.Click += (_, _) => ShowRecordMenu(recordTop);
+        actions.Children.Add(recordTop);
         actions.Children.Add(importTop);
         actions.Children.Add(Ui.Button("📂 Ordner", () => OpenFolder(Path.GetDirectoryName(_file)!), "Speicherort öffnen"));
         actions.Children.Add(Ui.Button("🖼 Frame → Editor", async () => await FrameToEditorAsync(), "Aktuelles Bild mit den sichtbaren Annotationen als bearbeitbaren Screenshot öffnen"));
@@ -210,6 +215,9 @@ public sealed class VideoEditorWindow : Window
         var img = RailButton("🖼", "Bild", "Bild als Annotation einfügen (z. B. Logo)");
         img.Click += async (_, _) => { img.IsChecked = false; await InsertImageAsync(); };
         rail.Children.Add(img);
+        var rec = RailButton("●", "Aufnahme", "Neues Video aufnehmen und in die Timeline legen");
+        rec.Click += (_, _) => { rec.IsChecked = false; ShowRecordMenu(rec); };
+        rail.Children.Add(rec);
         var vid = RailButton("🎞", "Video", "Weiteres Video importieren");
         vid.Click += (_, _) => { vid.IsChecked = false; ShowImportMenu(vid); };
         rail.Children.Add(vid);
@@ -242,6 +250,8 @@ public sealed class VideoEditorWindow : Window
         strip.Children.Add(Ui.Button("↶", () => _canvas.Undo(), "Rückgängig – auch Schnitte und Spuren (Strg+Z)"));
         strip.Children.Add(Ui.Button("↷", () => _canvas.Redo(), "Wiederholen (Strg+Y)"));
         strip.Children.Add(Ui.Button("🗑", DeleteSelected, "Ausgewählte Annotation bzw. ausgewählten Clip löschen (Entf)"));
+        strip.Children.Add(new Separator { Width = 10 });
+        strip.Children.Add(Ui.Button("📋 Bild kopieren", async () => await CopyFrameAsync(), "Aktuelles Bild mit allen sichtbaren Annotationen in die Zwischenablage (Strg+C) – z. B. zum Einfügen in einen Chat"));
 
         var center = new DockPanel();
         DockPanel.SetDock(strip, Dock.Top); center.Children.Add(strip);
@@ -256,14 +266,16 @@ public sealed class VideoEditorWindow : Window
         propsTab.Children.Add(_props);
         var tabs = new TabControl
         {
-            Width = 320,
+            Width = 330,
             ItemsSource = new[]
             {
                 new TabItem { Header = "Eigenschaften", Content = propsTab, FontSize = 13 },
                 new TabItem { Header = "Ebenen", Content = _layers, FontSize = 13 },
+                new TabItem { Header = "Medien", Content = new ScrollViewer { Content = _mediaBox, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }, FontSize = 13 },
                 new TabItem { Header = "Zoom & Folien", Content = new ScrollViewer { Content = _videoBox, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }, FontSize = 13 },
             },
         };
+        _tabs = tabs;
 
         // ---- bottom: transport + edit + timeline
         _play = Ui.Button("▶", TogglePlay, "Abspielen / Pause (Leertaste)");
@@ -408,6 +420,7 @@ public sealed class VideoEditorWindow : Window
                 MarkChanged();
             }
             else _seq = SequenceOps.ForVideo(VideoStepRenderer.Store(_app, _session, _file), _media.Duration, _media.Width, _media.Height, _media.Fps, _media.HasAudio, name);
+            _seq.SyncMedia();
             _overlay.Page.Width = _seq.Width; _overlay.Page.Height = _seq.Height;
             _canvas.InvalidateMeasure();
             if (_freshAnnotations)
@@ -421,7 +434,7 @@ public sealed class VideoEditorWindow : Window
             _info.Text = $"{_seq.Width}×{_seq.Height} · {_media.Fps:0.#} fps · {VideoTimeline.Fmt(_media.Duration)} · {SizeText(new FileInfo(_file).Length)}{(_media.HasAudio ? " · mit Ton" : "")} · {_file}" +
                          (_sidecar is not null && File.Exists(_sidecar) && !_freshAnnotations ? "  ·  Annotationen aus " + Path.GetFileName(_sidecar) + " geladen" : "");
             FitCanvas();
-            BuildVideoBox(); BuildTimeBox();
+            BuildVideoBox(); BuildTimeBox(); BuildMediaBox();
             SeekTo(0, hiRes: true);
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or InvalidOperationException)
@@ -463,26 +476,9 @@ public sealed class VideoEditorWindow : Window
     private void AddClickMarkers()
     {
         if (_clicks is null || _clicks.Count == 0 || _media is null) return;
-        var groups = new List<(double T, int X, int Y, int Count)>();
-        foreach (var c in _clicks.OrderBy(c => c.T))
-        {
-            if (groups.Count > 0 && c.T - groups[^1].T < 0.5 && Math.Abs(c.X - groups[^1].X) <= 12 && Math.Abs(c.Y - groups[^1].Y) <= 12)
-                groups[^1] = groups[^1] with { Count = groups[^1].Count + 1 };
-            else groups.Add((c.T, c.X, c.Y, 1));
-        }
-        var n = 0;
-        var r = Math.Max(12, _media.Width / 70.0);
-        foreach (var g in groups)
-        {
-            n++;
-            _overlay.Page.Layers.Add(new ShapeLayer
-            {
-                Name = g.Count >= 2 ? $"Doppelklick {n}" : $"Klick {n}", Shape = ShapeKind.Ellipse, Rect = new RectD(g.X - r, g.Y - r, 2 * r, 2 * r),
-                Stroke = new ColorRgba(255, 200, 0), Fill = new ColorRgba(255, 214, 0, 60), StrokeWidth = Math.Max(3, r / 4), Shadow = false,
-                Timing = new LayerTiming { StartSeconds = Math.Max(0, Math.Round(g.T - 0.05, 2)), EndSeconds = Math.Min(_media.Duration, Math.Round(g.T + (g.Count >= 2 ? 0.9 : 0.6), 2)) },
-            });
-        }
-        _info.Text = $"{n} Mausklick(s) markiert ({_clicks.Count - n} Doppelklick-Klick(s) zusammengefasst).";
+        var layers = ClickMarkers.Create(_clicks, _media.Width, _media.Duration);
+        _overlay.Page.Layers.AddRange(layers);
+        _info.Text = $"{layers.Count} Mausklick(s) markiert ({_clicks.Count - layers.Count} Doppelklick-Klick(s) zusammengefasst).";
     }
 
     // ================================================================== time & mode
@@ -951,17 +947,56 @@ public sealed class VideoEditorWindow : Window
         if (_slideClip is not null) ExitSlide();
         path ??= await Dialogs.OpenFileAsync(this, "Video importieren", Path.Combine(_app.Env.MediaDir, "Aufnahmen"), ("Videos", new[] { "*.mp4", "*.mkv", "*.webm", "*.mov", "*.avi" }));
         if (path is null) return;
+        await PlaceFileAsync(path, mode);
+    }
+
+    private void ShowRecordMenu(Control anchor)
+    {
+        var menu = new MenuFlyout();
+        void Item(string text, string mode) { var mi = new MenuItem { Header = text }; mi.Click += async (_, _) => await RecordIntoAsync(mode); menu.Items.Add(mi); }
+        Item("Aufnehmen und an der Abspielposition einfügen (Rest rückt nach hinten)", "insert");
+        Item("Aufnehmen und ans Ende anhängen", "append");
+        Item("Aufnehmen und darüberlegen (Bild-im-Bild ab Abspielposition)", "overlay");
+        Item("Nur aufnehmen (in die Medienliste)", "bin");
+        menu.ShowAt(anchor);
+    }
+
+    /// <summary>Records a new video (this window is hidden meanwhile) and puts it into the edit.</summary>
+    public async Task RecordIntoAsync(string mode)
+    {
+        if (_slideClip is not null) ExitSlide();
+        if (_playTimer.IsEnabled) TogglePlay();
+        var r = await App.Current.Recording.RecordAsync(this);
+        if (r is null) return;
+        await PlaceFileAsync(r.File, mode, r);
+    }
+
+    /// <summary>
+    /// Adds a file to the media list and – unless <paramref name="mode"/> is "bin" – places it: insert at the playhead (ripple),
+    /// append to the main track or overlay as picture-in-picture. Clicks/live drawings of a recording come along.
+    /// </summary>
+    public async Task<SequenceClip?> PlaceFileAsync(string path, string mode, RecordingResult? recording = null)
+    {
         MediaInfo info;
         try { info = await MediaProbe.ProbeAsync(_tools, path); }
-        catch (InvalidDataException ex) { await Dialogs.InfoAsync(this, "Video importieren", ex.Message); return; }
+        catch (InvalidDataException ex) { await Dialogs.InfoAsync(this, "Video", ex.Message); return null; }
+        // same file already in the media list (maybe stored relative vs. absolute) → reuse its path
+        var full = Path.GetFullPath(path);
+        var known = _seq.Media.FirstOrDefault(m => ProjectFile.ResolveMedia(_session.FilePath, m.Path, _app.Env.FromPortablePath) is { } r && string.Equals(Path.GetFullPath(r), full, StringComparison.OrdinalIgnoreCase));
+        var stored = known?.Path ?? VideoStepRenderer.Store(_app, _session, path);
+        var name = Path.GetFileNameWithoutExtension(path);
         var clip = new SequenceClip
         {
-            Name = Path.GetFileNameWithoutExtension(path), Path = VideoStepRenderer.Store(_app, _session, path),
-            SourceIn = 0, SourceOut = info.Duration, SourceDuration = info.Duration, SourceWidth = info.Width, SourceHeight = info.Height, HasAudio = info.HasAudio,
+            Name = name, Path = stored, SourceIn = 0, SourceOut = info.Duration, SourceDuration = info.Duration,
+            SourceWidth = info.Width, SourceHeight = info.Height, HasAudio = info.HasAudio,
         };
         await EnsureSourceAsync(path);
-        Edit("Video importieren", () =>
+        var placed = mode != "bin";
+        Edit(recording is null ? "Video importieren" : "Aufnahme einfügen", () =>
         {
+            if (_seq.Media.FirstOrDefault(m => string.Equals(m.Path, stored, StringComparison.OrdinalIgnoreCase)) is { } existing) existing.Recorded |= recording is not null;
+            else _seq.Media.Add(new MediaItem { Path = stored, Name = name, Duration = info.Duration, Width = info.Width, Height = info.Height, HasAudio = info.HasAudio, Recorded = recording is not null });
+            if (!placed) return;
             switch (mode)
             {
                 case "append":
@@ -984,10 +1019,121 @@ public sealed class VideoEditorWindow : Window
                     break;
             }
             foreach (var t in _seq.Tracks) t.Clips.Sort((a, b) => a.Start.CompareTo(b.Start));
+            if (recording is not null)
+            {
+                // clicks and live drawings belong to the new clip: its time and its place on the canvas
+                var rect = SequenceOps.Placement(_seq, clip);
+                var f = rect.Width / Math.Max(1, recording.Width);
+                var number = _overlay.Page.Layers.Count(l => l.Name.StartsWith("Klick ", StringComparison.Ordinal) || l.Name.StartsWith("Doppelklick ", StringComparison.Ordinal)) + 1;
+                _overlay.Page.Layers.AddRange(ClickMarkers.Create(recording.Clicks, recording.Width, info.Duration, clip.Start, f, rect.X, rect.Y, number));
+                _overlay.Page.Layers.AddRange(ClickMarkers.PlaceLive(recording.LiveLayers, clip.Start, f, rect.X, rect.Y));
+            }
         });
-        SelectClip(clip.Id);
+        if (placed) SelectClip(clip.Id);
+        BuildMediaBox();
         Refresh();
-        _info.Text = $"„{clip.Name}“ importiert ({clip.Duration:0.0} s{(info.Width != _seq.Width || info.Height != _seq.Height ? $", {info.Width}×{info.Height} wird eingepasst" : "")}).";
+        _info.Text = $"„{name}“ {(recording is null ? "importiert" : "aufgenommen")} ({info.Duration:0.0} s{(info.Width != _seq.Width || info.Height != _seq.Height ? $", {info.Width}×{info.Height} wird eingepasst" : "")})" +
+                     (placed ? "." : " – liegt in der Medienliste (Tab „Medien“).");
+        return placed ? clip : null;
+    }
+
+    // ================================================================== media list
+
+    private void BuildMediaBox()
+    {
+        _mediaBox.Children.Clear();
+        _mediaBox.Children.Add(Ui.Label("Medien dieses Projekts", 14, bold: true));
+        _mediaBox.Children.Add(Ui.Label("Alle Videos, die zu diesem Schnitt gehören – auch noch nicht platzierte. Die Dateien werden verknüpft, nicht verändert.", 11, opacity: 0.65));
+        var rec = Ui.Button("● Aufnehmen…", () => { }, "Neues Video aufnehmen", accent: true);
+        rec.Click += (_, _) => ShowRecordMenu(rec);
+        var imp = Ui.Button("🎞 Importieren…", () => { }, "Vorhandenes Video hinzufügen");
+        imp.Click += (_, _) => ShowImportMenu(imp);
+        _mediaBox.Children.Add(new WrapPanel { Children = { rec, imp, Ui.Button("📦 Sammeln…", async () => await CollectMediaAsync(), "Alle Videos in einen Ordner neben dem Projekt kopieren (zum Weitergeben)") } });
+        long total = 0;
+        foreach (var m in _seq.Media.ToList())
+        {
+            var item = m;
+            var resolved = ProjectFile.ResolveMedia(_session.FilePath, m.Path, _app.Env.FromPortablePath);
+            var used = _seq.UseCount(m);
+            if (resolved is not null) total += new FileInfo(resolved).Length;
+            var thumb = resolved is not null ? Thumb(resolved, Math.Min(1, m.Duration / 2)) : null;
+            var img = new Image { Width = 96, Height = 54, Stretch = Stretch.Uniform, Source = thumb };
+            var text = Ui.Column(1,
+                Ui.Label((resolved is null ? "⚠ " : m.Recorded ? "● " : "🎞 ") + m.Name, 12, bold: true),
+                Ui.Label(resolved is null ? "Datei nicht gefunden" : $"{VideoTimeline.Fmt(m.Duration)} · {m.Width}×{m.Height}{(m.HasAudio ? " · ♪" : "")} · {Core.Export.SizeOptimizer.FormatBytes(new FileInfo(resolved).Length)}", 10.5, opacity: 0.75),
+                Ui.Label(used == 0 ? "nicht in der Timeline" : $"{used}× in der Timeline", 10.5, opacity: 0.6));
+            var buttons = new WrapPanel();
+            if (resolved is not null)
+            {
+                buttons.Children.Add(Ui.Button("⤓", async () => await PlaceFileAsync(resolved, "insert"), "An der Abspielposition einfügen (Rest rückt nach)"));
+                buttons.Children.Add(Ui.Button("⇥", async () => await PlaceFileAsync(resolved, "append"), "Ans Ende anhängen"));
+                buttons.Children.Add(Ui.Button("⧉", async () => await PlaceFileAsync(resolved, "overlay"), "Darüberlegen (Bild-im-Bild ab Abspielposition)"));
+                buttons.Children.Add(Ui.Button("📂", () => OpenFolder(Path.GetDirectoryName(resolved)!), "Im Ordner zeigen"));
+            }
+            buttons.Children.Add(Ui.Button(resolved is null ? "Neu verknüpfen…" : "↺", async () => await RelinkAsync(item), "Andere Datei an diese Stelle setzen (z. B. verschobene Aufnahme)"));
+            if (used == 0) buttons.Children.Add(Ui.Button("✕", () => { Edit("Aus Medienliste entfernen", () => _seq.Media.Remove(item)); BuildMediaBox(); }, "Aus der Medienliste entfernen (die Datei bleibt erhalten)"));
+            var row = new DockPanel();
+            DockPanel.SetDock(img, Dock.Left); img.Margin = new Thickness(0, 0, 6, 0);
+            row.Children.Add(img);
+            row.Children.Add(Ui.Column(2, text, buttons));
+            _mediaBox.Children.Add(new Border
+            {
+                Child = row, Padding = new Thickness(5), CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(resolved is null ? Color.FromArgb(40, 220, 60, 40) : Color.FromArgb(22, 128, 128, 128)),
+            });
+        }
+        _mediaBox.Children.Add(Ui.Label($"{_seq.Media.Count} Video(s), {Core.Export.SizeOptimizer.FormatBytes(total)}", 11, opacity: 0.6));
+    }
+
+    private async Task RelinkAsync(MediaItem m)
+    {
+        var path = await Dialogs.OpenFileAsync(this, "Datei auswählen", _app.Env.MediaDir, ("Videos", new[] { "*.mp4", "*.mkv", "*.webm", "*.mov", "*.avi" }));
+        if (path is null) return;
+        var stored = VideoStepRenderer.Store(_app, _session, path);
+        var old = m.Path;
+        Edit("Neu verknüpfen", () =>
+        {
+            foreach (var c in _seq.AllClips.Where(c => string.Equals(c.Path, old, StringComparison.OrdinalIgnoreCase))) c.Path = stored;
+            m.Path = stored;
+        });
+        await EnsureSourceAsync(path);
+        BuildMediaBox(); Refresh(); RecomposeSoon();
+    }
+
+    private async Task CollectMediaAsync()
+    {
+        WriteBack();
+        if (_studio is null) SaveSidecar();
+        if (_session.FilePath is null) { await Dialogs.InfoAsync(this, "Sammeln", "Das Projekt hat noch keinen Speicherort. Im Studio zuerst speichern (oder eine Annotation/einen Schnitt machen und das Fenster schließen – dann wird es neben dem Video gespeichert)."); return; }
+        try
+        {
+            var r = await ProjectMediaService.CollectAsync(_app, _session, new Progress<string>(t => _info.Text = t));
+            foreach (var sp in _sources.Values) { foreach (var b in sp.Thumbs) b.Dispose(); sp.Decoded?.Dispose(); }
+            _sources.Clear();
+            foreach (var p in _seq.AllClips.Select(ResolveClip).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase)) await EnsureSourceAsync(p);
+            BuildMediaBox(); Refresh(); RecomposeSoon();
+            _info.Text = $"{r.Copied} Video(s) nach {ProjectMediaService.CollectFolder(_session)} kopiert, {r.AlreadyInside} lagen schon dort." + (r.Missing > 0 ? $" ⚠ {r.Missing} fehlen." : "");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            await Dialogs.InfoAsync(this, "Sammeln nicht möglich", ex.Message);
+        }
+    }
+
+    // ================================================================== clipboard
+
+    /// <summary>Current picture with all visible annotations (as in the export) into the clipboard.</summary>
+    public async Task CopyFrameAsync()
+    {
+        _text.Commit();
+        if (_app.Clipboard is null) { await Dialogs.InfoAsync(this, "Zwischenablage", "Auf diesem System noch nicht unterstützt."); return; }
+        if (await FrameAsSessionAsync() is not { } f) return;
+        using (f.Session)
+        {
+            using var img = f.Session.Renderer.RenderPage(f.Page);
+            var ok = _app.Clipboard.SetImage(SkiaConvert.ToRaw(img), SkiaConvert.EncodePng(img, 3));
+            _info.Text = ok ? $"Bild mit Annotationen kopiert ({img.Width} × {img.Height} px) – z. B. mit Strg+V in einen Chat einfügen." : "⚠ Zwischenablage ist von einem anderen Programm blockiert.";
+        }
     }
 
     // ================================================================== time box (selected annotation or clip)
@@ -1417,6 +1563,7 @@ public sealed class VideoEditorWindow : Window
             case Key.Z when ctrl: _canvas.Undo(); break;
             case Key.Y when ctrl: _canvas.Redo(); break;
             case Key.D when ctrl: _canvas.DuplicateSelection(); break;
+            case Key.C when ctrl: _ = CopyFrameAsync(); break;
             case Key.OemCloseBrackets when ctrl: _canvas.MoveSelection(shift ? int.MaxValue : 1); break;
             case Key.OemOpenBrackets when ctrl: _canvas.MoveSelection(shift ? int.MinValue : -1); break;
             case Key.Left when hasSel && !ctrl: _canvas.Nudge(shift ? -10 : -1, 0); break;

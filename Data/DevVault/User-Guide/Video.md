@@ -27,6 +27,12 @@ Das Video besteht aus **Clips auf Spuren** – die Originaldatei wird nie verän
 - **Clip ziehen**: verschieben (rastet an Kanten und am Abspielkopf ein), auch nach oben auf eine andere Spur; **Ränder ziehen** = Anfang/Ende kürzen oder wieder verlängern. Annotationen, die ganz im Clip liegen, wandern mit („Annotationen mitnehmen“).
 - **Bereich auf dem Zeitlineal ziehen + X**: entfernt diesen Bereich aus allen Spuren. **⇤ Anfang** (I) / **Ende ⇥** (O): alles vor/ab der Abspielposition entfernen.
 
+## Aufnehmen und Medien
+- **● Aufnehmen…** (oben, links in der Werkzeugleiste oder im Tab *Medien*): das Editorfenster verschwindet während der Aufnahme. Danach wird die Aufnahme eingefügt, angehängt, darübergelegt oder nur in die Medienliste gelegt – Klick-Markierungen und Live-Zeichnungen kommen mit.
+- Tab **Medien**: alle Videos dieses Schnitts mit Vorschau, Länge, Größe und wie oft sie verwendet werden. ⤓ einfügen · ⇥ anhängen · ⧉ darüberlegen · 📂 Ordner · ↺ / „Neu verknüpfen…“ bei verschobenen Dateien · ✕ aus der Liste (nur wenn unbenutzt).
+- **📦 Sammeln…** kopiert alle Videos neben das Projekt (`<Projekt>-Medien`) – zum Weitergeben den ganzen Ordner mitgeben.
+- **📋 Bild kopieren** (Strg+C): aktuelles Bild mit allen sichtbaren Annotationen in die Zwischenablage, z. B. zum Einfügen in einen Chat.
+
 ## Mehrere Videos und Spuren
 - **🎞 Video importieren**: *einfügen* an der Abspielposition (Rest rückt nach), *ans Ende anhängen* oder *darüberlegen* als Bild-im-Bild auf eigener Spur.
 - Ein Clip auf einer höheren Spur liegt über dem darunter. Position und Größe: im Video am goldenen Rahmen ziehen (Ecke unten rechts = Größe) oder Vorlagen ↖ ↗ ↙ ↘ ◻ Vollbild im Tab *Eigenschaften*; dort auch Deckkraft, Lautstärke, Ton aus, ▲/▼ Spur.

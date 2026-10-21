@@ -15,6 +15,9 @@ using AvPixelRect = Avalonia.PixelRect;
 
 namespace CaptureDoc.App.Video;
 
+/// <summary>A finished recording: file, clicks and live drawings in video seconds (positions in recorded pixels).</summary>
+public sealed record RecordingResult(string File, List<(double T, int X, int Y)> Clicks, List<Layer> LiveLayers, int Width, int Height);
+
 /// <summary>
 /// Screen recording workflow: select area → countdown → visible frame + control bar → stop → video editor.
 /// Recording only happens while the red frame and the timer are visible (no hidden recording).
@@ -26,11 +29,24 @@ public sealed class RecordingController
 
     public RecordingController(AppServices app) => _app = app;
 
+    public bool IsBusy => _busy;
+
+    /// <summary>Records and opens the result in a new video editor.</summary>
     public async Task StartAsync()
     {
-        if (_busy) return;
-        if (_app.Ffmpeg is not { } tools) { await ShowMissingFfmpegAsync(null); return; }
-        if (!_app.Capture.IsSupported) { await Dialogs.InfoAsync(null, "Nicht verfügbar", "Videoaufnahme ist auf diesem Betriebssystem noch nicht implementiert."); return; }
+        var r = await RecordAsync();
+        if (r is null) return;
+        var ed = new VideoEditorWindow(_app, r.File, clicks: r.Clicks, liveLayers: r.LiveLayers);
+        ed.Show();
+        ed.Activate();
+    }
+
+    /// <summary>Records one video (all CaptureDoc windows are hidden meanwhile) and returns it, or null if cancelled.</summary>
+    public async Task<RecordingResult?> RecordAsync(Window? owner = null)
+    {
+        if (_busy) return null;
+        if (_app.Ffmpeg is not { } tools) { await ShowMissingFfmpegAsync(owner); return null; }
+        if (!_app.Capture.IsSupported) { await Dialogs.InfoAsync(owner, "Nicht verfügbar", "Videoaufnahme ist auf diesem Betriebssystem noch nicht implementiert."); return null; }
         _busy = true;
         var hidden = App.Current.OpenWindows.Where(w => w.IsVisible).ToList();
         try
@@ -43,7 +59,7 @@ public sealed class RecordingController
             if (area is not { } region || region.Width < 16 || region.Height < 16)
             {
                 foreach (var w in hidden) w.Show();
-                return;
+                return null;
             }
             var opt = _app.Settings.Platform;
             if (opt.RecordingCountdown > 0) await CountdownWindow.RunAsync(opt.RecordingCountdown);
@@ -65,19 +81,17 @@ public sealed class RecordingController
             var session = new RecordingSessionUi(_app, recorder);
             var file = await session.RunAsync();
             foreach (var w in hidden.Where(w => w is not EditorWindow)) w.Show();
-            if (file is not null)
-            {
-                Log.Info($"Recording saved {region.Width}x{region.Height}");
-                var ed = new VideoEditorWindow(_app, file, clicks: session.MappedClicks, liveLayers: session.LiveLayers);
-                ed.Show();
-                ed.Activate();
-            }
+            owner?.Activate();
+            if (file is null) return null;
+            Log.Info($"Recording saved {region.Width}x{region.Height}");
+            return new RecordingResult(file, session.MappedClicks, session.LiveLayers, recorder.EffectiveRegion.Width, recorder.EffectiveRegion.Height);
         }
         catch (Exception ex)
         {
             Log.Error("Recording failed", ex);
             foreach (var w in hidden) w.Show();
-            await Dialogs.InfoAsync(null, "Aufnahme fehlgeschlagen", ex.Message);
+            await Dialogs.InfoAsync(owner, "Aufnahme fehlgeschlagen", ex.Message);
+            return null;
         }
         finally { _busy = false; }
     }

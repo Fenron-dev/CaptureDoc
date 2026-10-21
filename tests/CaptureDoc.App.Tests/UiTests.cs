@@ -60,6 +60,9 @@ public class UiTests
         return f;
     }
 
+    /// <summary>Video editor finished loading (info line without "Vorschau wird erstellt").</summary>
+    private static bool Loaded(Window w) => Texts(w).Any(t => t.Contains("320×240") && !t.Contains("Vorschau wird erstellt"));
+
     private static void Pump(int ms)
     {
         var until = DateTime.UtcNow.AddMilliseconds(ms);
@@ -108,7 +111,7 @@ public class UiTests
         File.Copy(clip, video);
         var w = new VideoEditorWindow(App, video) { Width = 1440, Height = 900 };
         w.Show();
-        PumpUntil(() => Texts(w).Any(t => t.Contains("320×240")));
+        PumpUntil(() => Loaded(w));
         Pump(300);
         var tl = w.GetVisualDescendants().OfType<VideoTimeline>().Single();
         // playhead to 3 s, S = split
@@ -162,7 +165,7 @@ public class UiTests
         if (gs is not null) studio!.Session.Project.Guide.Steps.Add(gs);
         var w = new VideoEditorWindow(App, clip, gs, studio) { Width = 1440, Height = 900 };
         w.Show();
-        PumpUntil(() => Texts(w).Any(t => t.Contains("320×240")));
+        PumpUntil(() => Loaded(w));
         Pump(400);
         return w;
     }
@@ -193,6 +196,9 @@ public class UiTests
         canvas.Select(new[] { overlay.Page.Layers[1].Id });
         Pump(300);
         w.CaptureRenderedFrame()?.Save(Path.Combine(outDir, "video-editor.png"));
+        w.GetVisualDescendants().OfType<TabControl>().First().SelectedIndex = 2;
+        Pump(300);
+        w.CaptureRenderedFrame()?.Save(Path.Combine(outDir, "video-media.png"));
         var slide = w.AddSlide(2);
         Pump(500);
         w.CaptureRenderedFrame()?.Save(Path.Combine(outDir, "video-slide.png"));
@@ -356,7 +362,7 @@ public class UiTests
         File.Copy(clip, video);
         var w = new VideoEditorWindow(App, video) { Width = 1440, Height = 900 };
         w.Show();
-        PumpUntil(() => Texts(w).Any(t => t.Contains("320×240")));
+        PumpUntil(() => Loaded(w));
         Pump(300);
         var canvas = w.GetVisualDescendants().OfType<EditorCanvas>().Single();
         canvas.Apply("Test", () => canvas.Page.Layers.Add(new StepLayer { Center = new PointD(50, 50), Name = "Nummer", Timing = new LayerTiming { StartSeconds = 1, EndSeconds = 3 } }));
@@ -368,7 +374,7 @@ public class UiTests
         Assert.True(File.Exists(sidecar));
         var w2 = new VideoEditorWindow(App, video) { Width = 1440, Height = 900 };
         w2.Show();
-        PumpUntil(() => Texts(w2).Any(t => t.Contains("320×240")));
+        PumpUntil(() => Loaded(w2));
         Pump(300);
         var tl = w2.GetVisualDescendants().OfType<VideoTimeline>().Single();
         Assert.Contains(tl.Lanes, l => l.Name == "Nummer");
@@ -411,6 +417,65 @@ public class UiTests
         var info = await Task.Run(() => MediaProbe.ProbeAsync(App.Ffmpeg!, media.Values.Single().FilePath));
         Assert.InRange(info.Duration, 15.5, 16.5);
         w.Close(); studio.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task A_recording_lands_in_the_timeline_with_its_clicks_and_drawings()
+    {
+        if (MakeClip() is not { } clip) return;
+        var w = OpenEditor(clip, new VideoOverlay());
+        var seq = w.Sequence;
+        var live = new FreehandLayer { Name = "Live: Stift", Points = { new PointD(10, 10), new PointD(50, 50) }, Timing = new LayerTiming { StartSeconds = 1, EndSeconds = 2 } };
+        var rec = new RecordingResult(clip, new List<(double, int, int)> { (2.0, 100, 100), (2.2, 102, 101) }, new List<Layer> { live }, 320, 240);
+        var placed = await w.PlaceFileAsync(clip, "append", rec);
+        Pump(200);
+        Assert.NotNull(placed);
+        Assert.Equal(8, placed!.Start, 1);                                 // appended after the first 8 s
+        var marker = Assert.Single(w.Session.Project.Guide.Steps[0].Video!.Overlay!.Page.Layers.OfType<ShapeLayer>());
+        Assert.StartsWith("Doppelklick", marker.Name);                     // two clicks → one marker
+        Assert.InRange(marker.Timing!.StartSeconds, 9.9, 10.0);              // 8 s + 2 s
+        var drawn = w.Session.Project.Guide.Steps[0].Video!.Overlay!.Page.Layers.OfType<FreehandLayer>().Single();
+        Assert.Equal(9, drawn.Timing!.StartSeconds, 2);
+        Assert.Contains(seq.Media, m => m.Recorded);
+        // "only record": goes to the media list, not into the timeline
+        var before = seq.AllClips.Count();
+        await w.PlaceFileAsync(clip, "bin", rec with { File = clip });
+        Assert.Equal(before, seq.AllClips.Count());
+        // the media tab lists the file with its use count
+        w.GetVisualDescendants().OfType<TabControl>().First().SelectedIndex = 2;
+        Pump(200);
+        Assert.Single(seq.Media);                                           // the same file is listed once
+        Assert.Contains(Texts(w), t => t.StartsWith("Medien dieses Projekts"));
+        Assert.Contains(Texts(w), t => t.Contains("2× in der Timeline"));
+        w.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task Project_files_are_collected_next_to_the_project()
+    {
+        if (MakeClip() is not { } clip) return;
+        var dir = Path.Combine(Root, "collect-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var session = new ProjectSession(new CaptureProject { Title = "Tutorial" }, new Core.Serialization.AssetStore());
+        var seq = SequenceOps.ForVideo(clip, 8, 320, 240, 10, false, "clip");
+        session.Project.Guide.Steps.Add(new GuideStep { Title = "Video", Video = new VideoRef { Path = clip, Sequence = seq } });
+        var file = Path.Combine(dir, "Tutorial.capturedoc");
+        session.Save(file);
+        var list = ProjectMediaService.List(App, session);
+        Assert.False(Assert.Single(list).Missing);
+        var r = await ProjectMediaService.CollectAsync(App, session);
+        Assert.Equal(1, r.Copied);
+        var copied = Path.Combine(dir, "Tutorial-Medien", "clip.mkv");
+        Assert.True(File.Exists(copied));
+        Assert.True(File.Exists(clip));                                    // original untouched
+        Assert.Equal("Tutorial-Medien/clip.mkv", seq.Tracks[0].Clips[0].Path);
+        var again = await ProjectMediaService.CollectAsync(App, session);
+        Assert.Equal((0, 1), (again.Copied, again.AlreadyInside));
+        var win = new ProjectMediaWindow(App, session);
+        win.Show(); Pump(100);
+        Assert.Contains(Texts(win), t => t.Contains("clip.mkv"));
+        win.Close();
+        session.Dispose();
     }
 
     [AvaloniaFact]

@@ -17,12 +17,38 @@ public sealed class VideoSequence
     public ColorRgba Background { get; set; } = ColorRgba.Black;
     /// <summary>Bottom → top.</summary>
     public List<VideoTrack> Tracks { get; set; } = new();
+    /// <summary>Videos belonging to this edit (also those not – or no longer – placed on a track).</summary>
+    public List<MediaItem> Media { get; set; } = new();
+
+    /// <summary>Adds the sources of all clips to <see cref="Media"/> (older projects had no media list).</summary>
+    public void SyncMedia()
+    {
+        foreach (var c in AllClips.Where(c => c.Kind == ClipKind.Video))
+            if (!Media.Any(m => string.Equals(m.Path, c.Path, StringComparison.OrdinalIgnoreCase)))
+                Media.Add(new MediaItem { Path = c.Path, Name = System.IO.Path.GetFileNameWithoutExtension(c.Path.Replace('\\', '/').Split('/')[^1]), Duration = c.SourceDuration, Width = c.SourceWidth, Height = c.SourceHeight, HasAudio = c.HasAudio });
+    }
+
+    public int UseCount(MediaItem m) => AllClips.Count(c => c.Kind == ClipKind.Video && string.Equals(c.Path, m.Path, StringComparison.OrdinalIgnoreCase));
 
     [JsonIgnore] public double Duration => Tracks.SelectMany(t => t.Clips).Select(c => c.End).DefaultIfEmpty(0).Max();
     [JsonIgnore] public IEnumerable<SequenceClip> AllClips => Tracks.SelectMany(t => t.Clips);
 
     public SequenceClip? Find(Guid id) => AllClips.FirstOrDefault(c => c.Id == id);
     public VideoTrack? TrackOf(Guid clipId) => Tracks.FirstOrDefault(t => t.Clips.Any(c => c.Id == clipId));
+}
+
+/// <summary>A video file in the media list of an edit.</summary>
+public sealed class MediaItem
+{
+    public string Path { get; set; } = "";
+    public string Name { get; set; } = "";
+    public double Duration { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public bool HasAudio { get; set; }
+    public DateTimeOffset Added { get; set; } = DateTimeOffset.Now;
+    /// <summary>true = recorded from inside CaptureDoc.</summary>
+    public bool Recorded { get; set; }
 }
 
 public sealed class VideoTrack
@@ -218,6 +244,7 @@ public static class SequenceOps
     {
         var s = new VideoSequence { Width = Math.Max(2, width & ~1), Height = Math.Max(2, height & ~1), Fps = fps > 0 ? Math.Min(60, fps) : 30 };
         s.Tracks.Add(new VideoTrack { Name = "Video 1" });
+        s.Media.Add(new MediaItem { Path = path, Name = name, Duration = duration, Width = width, Height = height, HasAudio = hasAudio });
         s.Tracks[0].Clips.Add(new SequenceClip
         {
             Name = name, Path = path, SourceIn = 0, SourceOut = duration, SourceDuration = duration,
